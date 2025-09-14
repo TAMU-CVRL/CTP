@@ -22,5 +22,6 @@ Train:
     type: "cosine"
     num_cycles: 0.5
 
-  checkpoint_path: null
-  tensorboard_logdir: null #"runs/Sep11_01-24-10_etid-l17hrhk6cw.engr.tamu.edu"
+  # For resuming training
+  checkpoint_path: "checkpoints/checkpoint_epoch5.pt"
+  tensorboard_logdir: "runs/Sep11_01-24-10_etid-l17hrhk6cw.engr.tamu.edu"

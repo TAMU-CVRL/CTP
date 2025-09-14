@@ -166,17 +166,29 @@ class NuscenesData(Dataset):
     def get_lidar(self, sample):
         target_num_points = self.max_lidar_points
         lidar_token = self.nusc.get('sample_data', sample['data']['LIDAR_TOP'])
+        cs_record = self.nusc.get('calibrated_sensor', lidar_token['calibrated_sensor_token'])
         lidar_path = self.nusc.get_sample_data_path(lidar_token['token'])
         lidar = LidarPointCloud.from_file(lidar_path).points.T
         lidar = torch.tensor(lidar, dtype=torch.float32) # [N, 4]
-        total_num_points = lidar.size(0)
+
+        # lidar -> ego
+        points = lidar[:, :3]  # [N, 3]
+        # translation vector
+        t = torch.tensor(cs_record['translation'], dtype=torch.float32)  # [3]
+        # rotation quaternion
+        q = Quaternion(cs_record['rotation'])
+        points_ego = torch.tensor(q.rotation_matrix, dtype=torch.float32) @ points.T + t.view(3, 1)  # [3, N]
+        points_ego = points_ego.T  # [N, 3]
+
+        lidar_ego = torch.cat([points_ego, lidar[:, 3:4]], dim=1)  # [N, 4]
+
+        total_num_points = lidar_ego.size(0)
         # Pad lidar to ensure consistent tensor dimensions
         if total_num_points < target_num_points:
             padding = (0, 0, 0, target_num_points - total_num_points)
-            padded_lidar = F.pad(lidar, padding, value=0)
+            padded_lidar = F.pad(lidar_ego, padding, value=0)
         else:
-            selected_indices = torch.randperm(total_num_points)[:target_num_points]
-            padded_lidar = lidar[selected_indices, :]
+            padded_lidar = farthest_point_sampling(lidar_ego, target_num_points)
         return padded_lidar # [max_N, 4]
     
     def get_transform_w2ego(self, sample, inverse = False):
@@ -216,3 +228,23 @@ class NuscenesData(Dataset):
         velocity = torch.norm(velocity_vector)
 
         return velocity, accel, yaw_rate
+
+def farthest_point_sampling(points, npoint):
+    N, C = points.shape
+    device = points.device
+
+    centroids = torch.zeros(npoint, dtype=torch.long, device=device)
+    distance = torch.ones(N, device=device) * 1e10
+    farthest = torch.randint(0, N, (1,), dtype=torch.long, device=device)[0]
+
+    xyz = points[:, :3]
+    
+    for i in range(npoint):
+        centroids[i] = farthest
+        centroid_xyz = xyz[farthest].view(1, 3)
+        dist = torch.sum((xyz - centroid_xyz) ** 2, dim=1)
+        distance = torch.min(distance, dist)
+        farthest = torch.max(distance, dim=0)[1]
+
+    sampled_points = points[centroids]  # [npoint, C]
+    return sampled_points

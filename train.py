@@ -1,17 +1,14 @@
 import os
 import yaml
 
-from models.sllmclip import sllm_clip
+from models.sllmclip import sclip_triplet
 from models.pointnet2 import pointnet2_encoder
-from data.nuscenes_wrapper import TextLiDARPairDataset, collate_text_lidar_pairs, filter_small_pointclouds
-from utils.sparse2dense import sparse_to_dense
+from data.nuscenes_wrapper import TripletJsonlDataset
+from utils.processing import sparse_to_dense, image_transform
 
-from pathlib import Path
 import torch
-
 import clip
 from tqdm import tqdm
-from torch.cuda.amp import autocast
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 
@@ -38,12 +35,12 @@ def train(model, train_dataloader, eval_dataloader, device, optimizer, scheduler
             for i, sample in enumerate(pbar):
                 
                 labels = sample[0]   # string label
-                points = sample[1].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
+                imgs = sample[1].to(device) # [B, 3, H, W]
+                points = sample[2].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
                 text_ids = clip.tokenize(labels, truncate=True).to(device)
-                            
-                optimizer.zero_grad()
-                logits_per_lidar, logits_per_text = model(points, text_ids)
-                loss = model.get_loss(logits_per_lidar, logits_per_text)
+                           
+                logits_per_lidar, logits_per_image_text = model(text_ids, imgs, points)
+                loss = model.get_loss(logits_per_lidar, logits_per_image_text)
                 loss.backward()
 
                 if (step + 1) % accumulation_steps == 0:
@@ -60,17 +57,6 @@ def train(model, train_dataloader, eval_dataloader, device, optimizer, scheduler
                 
                 if step % 2 == 0:
                     pbar.write(f"[LOG] Epoch {epoch} Step {step} Loss {loss.item():.4f}")
-
-                # if step > 0 and step % 500 == 0:    
-                #     model.eval()
-                #     val_step_loss = evaluate(model, eval_dataloader, device)
-                #     train_writer.add_scalar("Loss/val_step", val_step_loss, step)
-                #     train_writer.add_scalars("Loss/epoch", {
-                #         "train": loss.item(),
-                #         "val": val_step_loss
-                #     }, step)
-                #     pbar.write(f"[EVAL] Step {step} | Validation Loss: {val_step_loss:.4f}")
-                #     model.train()
         
         train_avg_loss = running_loss / len(train_dataloader)
         train_writer.add_scalar("Loss/train_epoch", train_avg_loss, epoch)
@@ -103,11 +89,12 @@ def evaluate(model, eval_dataloader, device):
         with tqdm(eval_dataloader, desc="Evaluating") as pbar:
             for sample in pbar:
                 labels = sample[0]   # string label
-                points = sample[1].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
+                imgs = sample[1].to(device) # [B, 3, H, W]
+                points = sample[2].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
                 text_ids = clip.tokenize(labels, truncate=True).to(device)
 
-                logits_per_lidar, logits_per_text = model(points, text_ids)
-                loss = model.get_loss(logits_per_lidar, logits_per_text)
+                logits_per_lidar, logits_per_image_text = model(text_ids, imgs, points)
+                loss = model.get_loss(logits_per_lidar, logits_per_image_text)
 
                 total_loss += loss.item()
                 num_batches += 1
@@ -128,7 +115,8 @@ def load_config(config_path="config.yaml"):
 ###############################################################################
 # Main function
 if __name__ == "__main__":
-    cfg = load_config("configs/sclip.yaml")
+    cfg_path = "configs/sclip_168_20_pointnet2.yaml"
+    cfg = load_config(cfg_path)
     device = cfg["Train"]["device"] if torch.cuda.is_available() else "cpu"
 
     ### Load models ###
@@ -138,36 +126,37 @@ if __name__ == "__main__":
     for param in clip_model.parameters():
         param.requires_grad = False
     text_encoder = clip_model.encode_text
+    img_encoder = clip_model.encode_image
     # PointNet++ encoder
     lidar_encoder = pointnet2_encoder.PointNet2Encoder() # [B, C, N] -> [B, C']
     lidar_encoder.to(device)
     # model
-    model = sllm_clip(text_encoder=text_encoder, lidar_encoder=lidar_encoder)
+    model = sclip_triplet(
+        text_encoder=text_encoder, 
+        image_encoder=img_encoder, 
+        lidar_encoder=lidar_encoder, 
+        alpha=cfg["Model"]["alpha"]
+        )
     model.to(device)
     print(f"Model parameters: {model.param_count}")
     print(f"Lidar encoder parameters: {lidar_encoder.param_count}")
 
     ### Load dataset ###
     batch_size = cfg["Train"]["batch_size"]
-    min_points = cfg["Dataset"]["min_points"]
-
-    train_dataset = torch.load(cfg["Dataset"]["train_data_path"])
-    filtered_train_dataset = filter_small_pointclouds(train_dataset, min_points=min_points)
-    train_dataloader = torch.utils.data.DataLoader(
-        filtered_train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=lambda batch: collate_text_lidar_pairs(batch, sparse_to_dense_fn=sparse_to_dense)
+    
+    train_dataset = TripletJsonlDataset(
+        jsonl_file=cfg["Dataset"]["train_data_path"],
+        image_transform=image_transform,
+        sparse_to_dense_fn=sparse_to_dense
     )
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    eval_dataset = torch.load(cfg["Dataset"]["eval_data_path"])
-    filtered_eval_dataset = filter_small_pointclouds(eval_dataset, min_points=min_points)
-    eval_dataloader = torch.utils.data.DataLoader(
-        filtered_eval_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        collate_fn=lambda batch: collate_text_lidar_pairs(batch, sparse_to_dense_fn=sparse_to_dense)
+    eval_dataset = TripletJsonlDataset(
+        jsonl_file=cfg["Dataset"]["eval_data_path"],
+        image_transform=image_transform,
+        sparse_to_dense_fn=sparse_to_dense
     )
+    eval_dataloader = torch.utils.data.DataLoader(eval_dataset, batch_size=batch_size, shuffle=False)
     
     ### Load configurations ###
     epochs = cfg["Train"]["epochs"]
@@ -178,9 +167,10 @@ if __name__ == "__main__":
         lr=cfg["Train"]["learning_rate"],
         weight_decay=cfg["Train"]["weight_decay"]
     )
-    total_training_steps = epochs * len(train_dataset)
+    steps_per_epoch = len(train_dataloader) // accumulation_steps
+    total_training_steps = epochs * steps_per_epoch
     warmup_steps = int(cfg["Train"]["warmup_ratio"] * total_training_steps)
-
+    
     scheduler_cfg = cfg["Train"]["scheduler"]
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,

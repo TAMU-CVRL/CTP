@@ -1,10 +1,10 @@
 import os
 import yaml
 
-from models.sllmclip import sclip_triplet
+from models.sllmclip import sclip_pair
 from models.pointnet2 import pointnet2_encoder
-from data.nuscenes_wrapper import TripletJsonlDataset
-from utils.processing import sparse_to_dense, image_transform
+from functions import TextLiDARPairDataset, collate_text_lidar_pairs, filter_small_pointclouds
+from utils.processing import sparse_to_dense
 
 from pathlib import Path
 import torch
@@ -35,7 +35,7 @@ def evaluate_classification_accuracy(model, dataloader, device):
         'trafficcone',
         'barrier'
     ]
-    all_classes = [f"a pointcloud of a {cls}" for cls in base_classes]
+    all_classes = [f"a pointcloud of {cls}" for cls in base_classes]
 
     # Dictionaries to keep track of correct predictions and total counts per class
     correct_counts = defaultdict(int)
@@ -48,7 +48,8 @@ def evaluate_classification_accuracy(model, dataloader, device):
         for sample in tqdm(dataloader, desc="Evaluating Classification Accuracy"):
 
             labels = sample[0]   # string label
-            points = sample[2].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
+            points = sample[1].permute(0, 2, 1).to(device)   # tensor of different lengths. [B, N, 3] -> [B, 3, N]
+            text_ids = clip.tokenize(labels, truncate=True).to(device)
 
             # Forward pass all valid patches at once (better than loop)
             logits_per_lidar, _ = model(points, class_tokens)  # [N, C]
@@ -81,28 +82,22 @@ def load_config(config_path="config.yaml"):
 ###############################################################################
 # Main function
 if __name__ == "__main__":
-    cfg_path = "configs/sclip_168_20_pointnet2.yaml"
-    cfg = load_config(cfg_path)
+    cfg = load_config("configs/sclip.yaml")
     device = cfg["Train"]["device"] if torch.cuda.is_available() else "cpu"
 
     ### Load models ###
     # Clip text encoder
     clip_model, clip_preprocess = clip.load(cfg["Model"]["clip_model"], jit=False)
+    clip_model.to(device)
     clip_model.eval()
     for param in clip_model.parameters():
         param.requires_grad = False
     text_encoder = clip_model.encode_text
-    img_encoder = clip_model.encode_image
     # PointNet++ encoder
     lidar_encoder = pointnet2_encoder.PointNet2Encoder() # [B, C, N] -> [B, C']
     lidar_encoder.to(device)
     # model
-    model = sclip_triplet(
-        text_encoder=text_encoder, 
-        image_encoder=img_encoder, 
-        lidar_encoder=lidar_encoder, 
-        alpha=cfg["Model"]["alpha"]
-        )
+    model = sclip_pair(text_encoder=text_encoder, lidar_encoder=lidar_encoder)
     model.to(device)
     print(f"Model parameters: {model.param_count}")
     print(f"Lidar encoder parameters: {lidar_encoder.param_count}")
@@ -111,20 +106,22 @@ if __name__ == "__main__":
     batch_size = cfg["Train"]["batch_size"]
     min_points = cfg["Dataset"]["min_points"]
 
-    eval_dataset = TripletJsonlDataset(
-        jsonl_file=cfg["Dataset"]["eval_data_path"],
-        image_transform=image_transform,
-        sparse_to_dense_fn=sparse_to_dense
+    eval_dataset = torch.load(cfg["Dataset"]["eval_data_path"])
+    filtered_eval_dataset = filter_small_pointclouds(eval_dataset, min_points=min_points)
+    eval_dataloader = torch.utils.data.DataLoader(
+        filtered_eval_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=lambda batch: collate_text_lidar_pairs(batch, sparse_to_dense_fn=sparse_to_dense)
     )
-    eval_dataloader = torch.utils.data.DataLoader(eval_dataset, batch_size=batch_size, shuffle=False)
     
     ### Evaluate the model ###
-    checkpoint_path = cfg["Eval"]["checkpoint_path"]
+    checkpoint_path = "/home/ximeng/Documents/SparseCLIP/checkpoints/checkpoint_epoch5.pt"
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     with torch.no_grad():
         class_acc, overall_acc = evaluate_classification_accuracy(model, eval_dataloader, device)
-    output_path = cfg["Name"] + ".txt"
+    output_path = "evaluation_results.txt"
     with open(output_path, "w") as f:
         f.write("Per-class accuracies:\n")
         for cls, acc in class_acc.items():

@@ -3,6 +3,9 @@ import torch
 from sklearn.neighbors import NearestNeighbors
 import math
 
+from torchvision import transforms
+from PIL import Image
+
 def sparse_to_dense(points, target_num = 1024):
     if points.shape[0] >= target_num:
         target_points = farthest_point_sampling(points, npoint=target_num)  # [target_num, 3]
@@ -74,3 +77,25 @@ def farthest_point_sampling(points, npoint):
 
     sampled_points = points[centroids]  # [npoint, C]
     return sampled_points
+
+def resize_with_aspect_ratio(img, size=256):
+    w, h = img.size
+    scale = size / max(w, h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    img_resized = img.resize((new_w, new_h), Image.BILINEAR)
+
+    # Center crop
+    new_img = Image.new("RGB", (size, size))
+    left = (size - new_w) // 2
+    top = (size - new_h) // 2
+    new_img.paste(img_resized, (left, top))
+    return new_img
+
+image_transform = transforms.Compose([
+    transforms.Lambda(lambda img: resize_with_aspect_ratio(img, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=(0.48145466, 0.4578275, 0.40821073),  # CLIP mean
+        std=(0.26862954, 0.26130258, 0.27577711)   # CLIP std
+    )
+])
