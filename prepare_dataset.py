@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 from nuscenes.nuscenes import NuScenes
 from data.nuscenes_data import NuscenesData
-from data.nuscenes_wrapper import SparseCLIP_Dataset, save_triplet_dataset, save_triplet_dataset_jsonl
+from data.nuscenes_wrapper import SparseCLIP_Dataset, save_triplet_dataset_jsonl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract text-lidar pairs from NuScenes and save as dataset.")

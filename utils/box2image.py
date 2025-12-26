@@ -49,3 +49,4 @@ def crop_annotation(nusc, ann_token, sample_record, margin=5, min_ratio=0.8):
     cropped_im = im.crop((x_min_final, y_min_final, x_max_final, y_max_final)) 
     
     return cropped_im
+

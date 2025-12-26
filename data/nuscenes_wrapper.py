@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from pathlib import Path
+import io
 
 from nuscenes.utils.data_classes import Box
 from nuscenes.utils.geometry_utils import points_in_box
@@ -15,10 +15,8 @@ import numpy as np
 
 from utils.box2image import crop_annotation
 import json
-from torchvision import transforms
-from torchvision.utils import save_image
-from torchvision.transforms import InterpolationMode
 from PIL import Image
+import tarfile
 
 class SparseCLIP_Dataset(Dataset):
     def __init__(self, base_dataset):
@@ -71,10 +69,11 @@ class SparseCLIP_Dataset(Dataset):
             box.rotate(Quaternion(ego_pose['rotation']).inverse)
 
             yaw = box.orientation.yaw_pitch_roll[0]
+            bbox_inf = [*box.center.tolist(), *box.wlh.tolist(), float(yaw)]
             all_bboxes.append({
                 'sample_token': ann_record['token'],
                 'instance_token': ann_record['instance_token'],
-                'bbox': [*box.center, *box.wlh, yaw],
+                'bbox': bbox_inf,
                 'category': ann_record['category_name']
             })
             
@@ -93,18 +92,33 @@ class SparseCLIP_Dataset(Dataset):
                 continue
             
             # Build JSON-serializable format
-            til_triplet.append((label, cropped_image, points_in_instance))
+            til_triplet.append((label, cropped_image, points_in_instance, bbox_inf))
         return til_triplet, all_bboxes
 
 class TripletJsonlDataset(Dataset):
-    def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn):
+    def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, image_tar_path = None, promprt="This is a "):
         self.data = []
         with open(jsonl_file, "r") as f:
             for line in f:
                 self.data.append(json.loads(line))
-        
+
+        self.image_tar_path = image_tar_path
+        if self.image_tar_path is not None:
+            # Open tar archive once
+            self.tar = tarfile.open(image_tar_path, "r")
+            self.members = {}
+            for m in self.tar.getmembers():
+                rel_path = m.name
+                if rel_path.startswith("data/nuscenes_images/"):
+                    rel_path = rel_path[len("data/nuscenes_images/"):]
+                self.members[rel_path] = m
+            print(f"[INFO] Images will be loaded from TAR archive: {image_tar_path}")
+        else:
+            print(f"[INFO] Images will be loaded from disk directly.")
+            
         self.image_transform = image_transform
         self.sparse_to_dense_fn = sparse_to_dense_fn
+        self.promprt = promprt
 
     def __len__(self):
         return len(self.data)
@@ -113,18 +127,31 @@ class TripletJsonlDataset(Dataset):
         item = self.data[idx]
         
         # Text processing
-        label = "a pointcloud of a " + item["label"]
+        label = self.promprt + item["label"]
 
         # Image processing
-        img = Image.open(item["image_path"]).convert("RGB")
-        img = self.image_transform(img)
+        if self.image_tar_path is None: # Load image from disk directlyimage
+            img = Image.open(item["image_path"]).convert("RGB")
+            img = self.image_transform(img)
+        else: # Load image from tar instead of disk
+            img_rel_path = item["image_path"]
+            if img_rel_path.startswith("data/nuscenes_images/"):
+                img_rel_path = img_rel_path[len("data/nuscenes_images/"):]
+            
+            if img_rel_path not in self.members:
+                raise FileNotFoundError(f"{img_rel_path} not found in tar archive")
+
+            img_member = self.members[img_rel_path]
+            img_file = self.tar.extractfile(img_member)
+            img = Image.open(io.BytesIO(img_file.read())).convert("RGB")
+            img = self.image_transform(img)
 
         # Lidar processing
         lidar = torch.tensor(item["lidar"])
         lidar = self.sparse_to_dense_fn(lidar)
 
         return label, img, lidar
-
+        
 def save_triplet_dataset_jsonl(SparseCLIP_dataset, save_jsonl_path, image_dir, split, image_format='png'):
     os.makedirs(image_dir, exist_ok=True)
 
@@ -133,7 +160,7 @@ def save_triplet_dataset_jsonl(SparseCLIP_dataset, save_jsonl_path, image_dir, s
         for idx in tqdm(range(len(SparseCLIP_dataset)), desc="Processing triplets"):
             triplets = SparseCLIP_dataset[idx].get('til_triplet', [])
             for i, triplet in enumerate(triplets):
-                label, img_pil, lidar = triplet
+                label, img_pil, lidar, bbox = triplet
 
                 # Convert LiDAR tensor to list
                 lidar_list = lidar.tolist()
@@ -147,7 +174,8 @@ def save_triplet_dataset_jsonl(SparseCLIP_dataset, save_jsonl_path, image_dir, s
                 json_obj = {
                     "label": label,
                     "image_path": img_path,
-                    "lidar": lidar_list
+                    "lidar": lidar_list,
+                    "bbox": bbox
                 }
                 f_out.write(json.dumps(json_obj) + "\n")
                 f_out.flush()  # flush after each line

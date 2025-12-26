@@ -1,0 +1,42 @@
+Name: "ctp_default"
+
+Model:
+  clip_model: "ViT-B/32"
+  lidar_model: "PointNet2"
+  loss_fn: "r2_similarity_loss"
+  alpha: Null
+  pc_only: False
+
+Dataset:
+  sparse_method: "zero_pad"
+  # image_tar_path: "data/nuscenes_images.tar"
+  train_data_path: "data/tripletobj_train.jsonl"
+  # eval_data_path: "data/nuscenes_triplet_val.jsonl"
+  detailed_caption: True
+
+Train:
+  batch_size: 64 # 128 ~ 25.7GB
+  epochs: 10
+  learning_rate: 0.0005 # 5e-4
+  weight_decay: 0.2
+  warmup_ratio: 0.1 # 10%
+  accumulation_steps: 1
+
+  optimizer: "AdamW"
+
+  scheduler:
+    type: "constant"
+    num_cycles: Null
+
+  use_wandb: False
+  use_tb: True
+  checkpoint_path: Null
+  tensorboard_logdir: Null
+
+Eval:
+  eval_data_path: "data/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
+  device: "cuda"
+  loss_fn: "abs_cosine_matrix_loss_eval" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
+  alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
+  batch_size: 256
+  checkpoint_path: "checkpoints/128_obj2_r2_cube_all/ckpt_epoch9.pt"

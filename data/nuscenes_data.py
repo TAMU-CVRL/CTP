@@ -62,7 +62,7 @@ class NuscenesData(Dataset):
                 data['image_paths'].append(image_paths)
 
                 # Lidar points
-                raw_lidar = self.get_lidar(sample).unsqueeze(0) # [1, N, 4]
+                raw_lidar = self.get_lidar(sample).unsqueeze(0) # [1, N, 4], in ego coord system
                 data['raw_lidar'].append(raw_lidar)
 
                 # previous waypoints

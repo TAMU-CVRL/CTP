@@ -92,12 +92,14 @@ class CTPTrainer:
         lidar_encoder_name = self.cfg["Model"]["lidar_model"].strip().lower()
         
         if pc_only:
+            print(f"[INFO] Only Lidar encoder is trained.")
             clip_model, _ = clip.load(clip_model_name, jit=False, device=self.device)
             clip_model.eval()
             for param in clip_model.parameters():
                 param.requires_grad = False
             text_encoder, img_encoder = clip_model.encode_text, clip_model.encode_image
         else:
+            print(f"[INFO] All encoders are trained.")
             text_encoder, img_encoder = get_clip_encoders(clip_model_name)
             text_encoder.to(self.device)
             img_encoder.to(self.device)

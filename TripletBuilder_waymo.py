@@ -1,3 +1,9 @@
+# TripletBuilder_waymo.py
+# ----------------------------------------
+# Extract text-lidar-image triplets from Waymo Open Perception Dataset (v2.0.1)
+# and save as JSONL file with cropped images and LiDAR point clouds.
+# ----------------------------------------
+
 import os
 import glob
 import json
@@ -8,9 +14,6 @@ import pyarrow.parquet as pq
 from PIL import Image
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
-# TODO: check if torch is needed
-import torch
-from torch.utils.data import Dataset
 import open3d as o3d
 from waymo_open_dataset.v2 import (
     LiDARCalibrationComponent,   # LiDAR intrinsic and extrinsic calibration parameters
@@ -32,8 +35,6 @@ WAYMO_LABEL_MAP = {
 
 ### Utility Functions ###
 def segment_ground_o3d(points, dist_thresh=0.15, ransac_n=3, num_iterations=1000):
-    if isinstance(points, torch.Tensor):
-        points = points.detach().cpu().numpy()
     if points.shape[1] > 3:
         points = points[:, :3]
 
@@ -120,6 +121,7 @@ def extract_and_save_waymo_triplets(
     save_jsonl = os.path.join(save_dir, f"waymo_triplet_{split}.jsonl")
     image_dir = os.path.join(save_dir, "waymo_images", split)
     lidar_dir = os.path.join(save_dir, "waymo_lidars", split)
+    os.makedirs(save_dir, exist_ok=True)
     os.makedirs(image_dir, exist_ok=True)
     os.makedirs(lidar_dir, exist_ok=True)
 
@@ -129,7 +131,7 @@ def extract_and_save_waymo_triplets(
         if all(isinstance(x, int) for x in segment_filter):
             # interpret as indices
             segment_ids = [all_segments[i] for i in segment_filter if 0 <= i < len(all_segments)]
-            print(f"[INFO] Using segment indices {segment_filter} -> {[s[:10]+'...' for s in segment_ids]}")
+            print(f"[INFO] Using segment indices {segment_filter}")
         elif all(isinstance(x, str) for x in segment_filter):
             # interpret as segment_id strings
             segment_ids = [s for s in all_segments if s in segment_filter]
@@ -268,7 +270,7 @@ def main():
     paths = parser.add_argument_group('Paths')
     paths.add_argument("--root_dir", type=str, default="/path/to/waymo/dataset/",
                        help="Path to the Waymo Open Dataset root folder.")
-    paths.add_argument("--save_dir", type=str, default="data",
+    paths.add_argument("--save_dir", type=str, default="datasets/waymo_triplets/",
                        help="Folder to save the output dataset file.")
     paths.add_argument("--split", type=str, choices=['training', 'validation', 'testing'], 
                        default='validation', help="Dataset split to process.")
