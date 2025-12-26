@@ -1,1 +1,1 @@
-# SparseCLIP
+# ContrastiveTensorPre-training (CTP)
