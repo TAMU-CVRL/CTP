@@ -1,1 +1,1 @@
-# ContrastiveTensorPre-training (CTP)
+# Contrastive Tensor Pre-training (CTP)
