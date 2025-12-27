@@ -57,7 +57,7 @@ def main():
         nusc = NuScenes(version=args.version, dataroot=args.data_path)
         
         # Initialize NuScenes data loaders
-        raw_dataset = NuscenesData(nusc, split_idx, pre_frame=0, future_frame=0)
+        raw_dataset = NuscenesData(nusc, split_idx, pre_frames=0, future_frames=0)
         wrapper_dataset = Nuscenes_TripletDataset(raw_dataset)
 
         # Setup output paths
