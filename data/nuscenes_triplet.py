@@ -4,56 +4,90 @@ import json
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-from utils.pc_utils import lidar2camera_fov, segment_ground_o3d, zero_pad
+from utils.pc_utils import lidar2camera_fov, segment_ground_o3d, zero_pad, load_lidar_bin
 import tarfile
 
-def load_lidar_bin(bin_path):
-    points = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 5)[:, :4]  # or :4 if 5 columns
-    return torch.tensor(points[:, :3], dtype=torch.float32)  # Keep only xyz
+from nuscenes.utils.data_classes import Box
+from nuscenes.utils.geometry_utils import points_in_box
+from pyquaternion import Quaternion
+from utils.box2image import crop_annotation
 
-class Triplet_Scene(Dataset):
-    def __init__(self, jsonl_file, nusc, image_transform, sparse_to_dense_fn):
-        self.data = []
-        with open(jsonl_file, "r") as f:
-            for line in f:
-                self.data.append(json.loads(line))
-
-        self.nusc = nusc  
-        self.image_transform = image_transform
-        self.sparse_to_dense_fn = sparse_to_dense_fn
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        item = self.data[idx]
+class Nuscenes_TripletDataset(Dataset):
+    def __init__(self, base_dataset):
+        self.base_dataset = base_dataset
+        self.nusc = base_dataset.nusc
         
-        # Load data
-        token = item["sample_token"]
-        caption = item.get("caption", "")
-        camera_name = item["camera_name"]
-        image_path = item["image_path"]
-        lidar_path = item["lidar_path"]
+    def __len__(self):
+        return len(self.base_dataset)  # Return the number of samples in the dataset
+       
+    def __getitem__(self, idx):
+        sample = self.base_dataset[idx]  # Fetch the sample by index
+        
+        if 'raw_lidar' in sample:
+            last_lidar = sample['raw_lidar'][-1, :, :3]  # current frame, [T, max_N, 4] -> [max_N, 3]
+            til_triplet, all_bboxes = self.prepare_triplet(sample, last_lidar)
+        sample['til_triplet'] = til_triplet
+        sample['all_bboxes'] = all_bboxes
+        return sample
+    
+    def prepare_triplet(self, sample, pc_ego):
+        """
+        sample: a sample from NuScenes
+        pc_ego: point cloud in ego coordinate, shape [N, 3] or [N, 4] (x, y, z [, intensity])
+        """
+        sample_record = self.nusc.get('sample', sample['token'][-1])
+        lidar_token = self.nusc.get('sample_data', sample_record['data']['LIDAR_TOP'])
+        ego_pose = self.nusc.get('ego_pose', lidar_token['ego_pose_token'])
+        til_triplet = []
+        all_bboxes = []
 
-        # Image processing
-        img = Image.open(image_path).convert("RGB")
-        img = self.image_transform(img)
+        for ann_token in sample_record['anns']:
+            # 1. Check visibility
+            ann_record = self.nusc.get('sample_annotation', ann_token)
+            visible = int(ann_record['visibility_token'])
+            if visible < 2: # 0: unknown, 1: not_visible, 2: partly, 3: fully
+                continue
+            # Get label
+            full_label = ann_record['category_name']
+            parts = full_label.split('.')
+            # Use the second part as the label if it exists, otherwise use the last part
+            if len(parts) >= 2:
+                label = parts[1]
+            else:
+                label = parts[-1]
+            # Get 3D bounding box
+            box = Box(ann_record['translation'], ann_record['size'], Quaternion(ann_record['rotation']))
 
-        # Lidar processing
-        lidar_scene = load_lidar_bin(lidar_path) # raw lidar
-        lidar = zero_pad(lidar_scene, 35000) # [35000, 3]
-        _, lidar_scene_non_ground = segment_ground_o3d(lidar_scene) # lidar without ground
-        visible_points, _ = lidar2camera_fov(self.nusc, lidar_scene_non_ground, token, camera_name) # camera fov
-        visible_points = self.sparse_to_dense_fn(visible_points) # [1024, 3]
+            # Step 1: global -> ego
+            box.translate(-np.array(ego_pose['translation']))
+            box.rotate(Quaternion(ego_pose['rotation']).inverse)
 
-        return {
-            "token": token,
-            "camera_name": camera_name,
-            "caption": caption,
-            "image": img,
-            "lidar": lidar,
-            "visible_points": visible_points
-        }
+            yaw = box.orientation.yaw_pitch_roll[0]
+            bbox_inf = [*box.center.tolist(), *box.wlh.tolist(), float(yaw)]
+            all_bboxes.append({
+                'sample_token': ann_record['token'],
+                'instance_token': ann_record['instance_token'],
+                'bbox': bbox_inf,
+                'category': ann_record['category_name']
+            })
+            
+            # Extract points within the bounding box
+            mask = points_in_box(box, pc_ego[:, :3].T)
+            points_in_instance = pc_ego[mask]
+
+            # 2. Check the number of points
+            if len(points_in_instance) < 5:
+                continue
+            
+            # Crop the image around the bounding box
+            cropped_image = crop_annotation(self.nusc, ann_token, sample_record, margin=5)
+            # 3. Check the cropped image
+            if cropped_image is None:
+                continue
+            
+            # Build JSON-serializable format
+            til_triplet.append((label, cropped_image, points_in_instance, bbox_inf))
+        return til_triplet, all_bboxes
 
 class Triplet_Object(Dataset):
     def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, image_tar_path = None, prompt="A "):
@@ -117,3 +151,46 @@ class Triplet_Object(Dataset):
             "lidar": lidar
         }
     
+class Triplet_Scene(Dataset):
+    def __init__(self, jsonl_file, nusc, image_transform, sparse_to_dense_fn):
+        self.data = []
+        with open(jsonl_file, "r") as f:
+            for line in f:
+                self.data.append(json.loads(line))
+
+        self.nusc = nusc  
+        self.image_transform = image_transform
+        self.sparse_to_dense_fn = sparse_to_dense_fn
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        
+        # Load data
+        token = item["sample_token"]
+        caption = item.get("caption", "")
+        camera_name = item["camera_name"]
+        image_path = item["image_path"]
+        lidar_path = item["lidar_path"]
+
+        # Image processing
+        img = Image.open(image_path).convert("RGB")
+        img = self.image_transform(img)
+
+        # Lidar processing
+        lidar_scene = load_lidar_bin(lidar_path) # raw lidar
+        lidar = zero_pad(lidar_scene, 35000) # [35000, 3]
+        _, lidar_scene_non_ground = segment_ground_o3d(lidar_scene) # lidar without ground
+        visible_points, _ = lidar2camera_fov(self.nusc, lidar_scene_non_ground, token, camera_name) # camera fov
+        visible_points = self.sparse_to_dense_fn(visible_points) # [1024, 3]
+
+        return {
+            "token": token,
+            "camera_name": camera_name,
+            "caption": caption,
+            "image": img,
+            "lidar": lidar,
+            "visible_points": visible_points
+        }

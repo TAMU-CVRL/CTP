@@ -105,9 +105,9 @@ def crop_lidar_with_obb(pcd_points, box3d, min_points=5):
     
 ### Main Extraction Function ###
 def extract_and_save_waymo_triplets(
-    root_dir,
+    data_path,
     split="validation",
-    save_dir="data",
+    save_path="dataset/waymo_triplets/",
     min_points=15,
     margin=5,
     min_ratio=0.8,
@@ -117,11 +117,11 @@ def extract_and_save_waymo_triplets(
     segment_filter=None
 ):
     
-    split_dir = os.path.join(root_dir, split)
-    save_jsonl = os.path.join(save_dir, f"waymo_triplet_{split}.jsonl")
-    image_dir = os.path.join(save_dir, "waymo_images", split)
-    lidar_dir = os.path.join(save_dir, "waymo_lidars", split)
-    os.makedirs(save_dir, exist_ok=True)
+    split_dir = os.path.join(data_path, split)
+    save_jsonl = os.path.join(save_path, f"waymo_triplet_{split}.jsonl")
+    image_dir = os.path.join(save_path, "waymo_images", split)
+    lidar_dir = os.path.join(save_path, "waymo_lidars", split)
+    os.makedirs(save_path, exist_ok=True)
     os.makedirs(image_dir, exist_ok=True)
     os.makedirs(lidar_dir, exist_ok=True)
 
@@ -268,9 +268,9 @@ def main():
     )
 
     paths = parser.add_argument_group('Paths')
-    paths.add_argument("--root_dir", type=str, default="/path/to/waymo/dataset/",
+    paths.add_argument("--data_path", type=str, default="/path/to/waymo/dataset/",
                        help="Path to the Waymo Open Dataset root folder.")
-    paths.add_argument("--save_dir", type=str, default="datasets/waymo_triplets/",
+    paths.add_argument("--save_path", type=str, default="datasets/waymo_triplets/",
                        help="Folder to save the output dataset file.")
     paths.add_argument("--split", type=str, choices=['training', 'validation', 'testing'], 
                        default='validation', help="Dataset split to process.")
@@ -295,16 +295,16 @@ def main():
 
     print(f"{'='*60}")
     print(f"[INFO] Starting Waymo Triplet Extraction")
-    print(f"[INFO] Source: {args.root_dir}/{args.split}")
-    print(f"[INFO] Destination: {args.save_dir}")
+    print(f"[INFO] Source: {args.data_path}/{args.split}")
+    print(f"[INFO] Destination: {args.save_path}")
     print(f"[INFO] Sampling Interval: {args.sample_interval}s")
     print(f"{'='*60}")
 
     try:
         extract_and_save_waymo_triplets(
-            root_dir=args.root_dir,
+            data_path=args.data_path,
             split=args.split,
-            save_dir=args.save_dir,
+            save_path=args.save_path,
             min_points=args.min_points,
             margin=args.margin,
             min_ratio=args.min_ratio,

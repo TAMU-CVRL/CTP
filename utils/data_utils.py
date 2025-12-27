@@ -3,6 +3,7 @@ import json
 from tqdm import tqdm
 from PIL import Image
 import numpy as np
+from pathlib import Path
 from nuscenes.utils.geometry_utils import view_points
 
 # def save_triplet_dataset_jsonl(dataset, save_jsonl_path, image_dir, split, image_format='png'):
@@ -37,45 +38,113 @@ from nuscenes.utils.geometry_utils import view_points
 
 #     print(f"[DONE] Triplets saved to {save_jsonl_path}, images in {image_dir}")
 
-def save_triplet_dataset_jsonl(dataset, save_jsonl_path, split, image_dir, lidar_dir, image_format='png', lidar_format='npy'):
-    os.makedirs(image_dir, exist_ok=True)
-    os.makedirs(lidar_dir, exist_ok=True)
-    # Open JSONL with line buffering for safety
-    with open(save_jsonl_path, "w", buffering=1) as f_out:  # line buffering
-        for idx in tqdm(range(len(dataset)), desc="Processing triplets"):
+# def save_triplet_dataset_jsonl(dataset, save_jsonl_path, split, rel_image_dir, rel_lidar_dir, image_format='png', lidar_format='npy'):
+#     jsonl_abs_path = Path(save_jsonl_path).resolve()
+#     base_root = jsonl_abs_path.parent
+
+#     abs_image_dir = base_root / rel_image_dir
+#     abs_lidar_dir = base_root / rel_lidar_dir
+
+#     abs_image_dir.mkdir(parents=True, exist_ok=True)
+#     abs_lidar_dir.mkdir(parents=True, exist_ok=True)
+#     # Open JSONL with line buffering for safety
+#     with open(save_jsonl_path, "w", buffering=1) as f_out:  # line buffering
+#         for idx in tqdm(range(len(dataset)), desc="Processing triplets"):
+#             triplets = dataset[idx].get('til_triplet', [])
+#             if not triplets:
+#                 continue
+#             for i, triplet in enumerate(triplets):
+#                 label, img_pil, lidar, bbox = triplet
+
+#                 # Save image to disk
+#                 img_filename = f"{split}_{idx}_{i}_{label}.{image_format}"
+#                 rel_img_path = os.path.join(rel_image_dir, img_filename)
+#                 abs_img_path = os.path.join(abs_image_dir, img_filename)
+#                 img_pil.save(abs_img_path)
+
+#                 # Save LiDAR to disk
+#                 lidar_filename = f"{split}_{idx}_{i}_{label}.{lidar_format}"
+#                 rel_lidar_path = os.path.join(rel_lidar_dir, lidar_filename)
+#                 abs_lidar_path = os.path.join(abs_lidar_dir, lidar_filename)
+#                 if lidar_format == 'npy':
+#                     np.save(abs_lidar_path, lidar)
+#                 elif lidar_format == 'txt':
+#                     np.savetxt(abs_lidar_path, lidar, fmt="%.4f")
+#                 else:
+#                     raise ValueError(f"Unsupported lidar_format: {lidar_format}")
+                
+#                 # Save JSON line
+#                 json_obj = {
+#                     "label": label,
+#                     "image_path": rel_img_path,
+#                     "lidar_path": rel_lidar_path,
+#                     "bbox": bbox
+#                 }
+#                 f_out.write(json.dumps(json_obj) + "\n")
+#                 f_out.flush()  # flush after each line
+
+#     print(f"[DONE] Triplets saved to {save_jsonl_path}, images in {abs_image_dir}, LiDAR in {abs_lidar_dir}")
+
+def save_triplet_dataset_jsonl(dataset, save_jsonl_path, split, rel_image_dir, rel_lidar_dir, image_format='png', lidar_format='npy'):
+    # 1. Anchor the absolute path relative to where the JSONL is stored
+    jsonl_abs_path = Path(save_jsonl_path).resolve()
+    base_root = jsonl_abs_path.parent
+
+    # 2. Define Absolute Paths for Disk I/O
+    abs_image_dir = base_root / rel_image_dir
+    abs_lidar_dir = base_root / rel_lidar_dir
+
+    # 3. Create directories physically
+    abs_image_dir.mkdir(parents=True, exist_ok=True)
+    abs_lidar_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] Saving images to: {abs_image_dir}")
+    print(f"[INFO] Saving LiDAR to: {abs_lidar_dir}")
+
+    # Open JSONL with line buffering
+    with open(save_jsonl_path, "w", buffering=1) as f_out:
+        for idx in tqdm(range(len(dataset)), desc=f"Processing {split} triplets"):
             triplets = dataset[idx].get('til_triplet', [])
             if not triplets:
                 continue
+
             for i, triplet in enumerate(triplets):
                 label, img_pil, lidar, bbox = triplet
 
-                # Save image to disk
-                img_filename = f"{split}_{idx}_{i}_{label}.{image_format}"
-                img_path = os.path.join(image_dir, img_filename)
-                img_pil.save(img_path)
+                # Common Filename Logic
+                filename_base = f"{split}_{idx}_{i}_{label}"
+                img_filename = f"{filename_base}.{image_format}"
+                lidar_filename = f"{filename_base}.{lidar_format}"
 
-                # Save LiDAR to disk
-                lidar_filename = f"{split}_{idx}_{i}_{label}.{lidar_format}"
-                lidar_path = os.path.join(lidar_dir, lidar_filename)
+                # --- 1. Disk Saving (Use Absolute Paths) ---
+                abs_img_path = abs_image_dir / img_filename
+                abs_lidar_path = abs_lidar_dir / lidar_filename
+                
+                # Save Image
+                img_pil.save(str(abs_img_path))
+
+                # Save LiDAR
                 if lidar_format == 'npy':
-                    np.save(lidar_path, lidar)
+                    np.save(str(abs_lidar_path), lidar)
                 elif lidar_format == 'txt':
-                    np.savetxt(lidar_path, lidar, fmt="%.4f")
+                    np.savetxt(str(abs_lidar_path), lidar, fmt="%.4f")
                 else:
                     raise ValueError(f"Unsupported lidar_format: {lidar_format}")
-                
-                # Save JSON line
+
+                # --- 2. JSON Record (Use Relative Paths) ---
+                # We use os.path.join or Path / to combine the relative dir prefix with filename
                 json_obj = {
                     "label": label,
-                    "image_path": img_path,
-                    "lidar_path": lidar_path,
+                    "image_path": str(Path(rel_image_dir) / img_filename),
+                    "lidar_path": str(Path(rel_lidar_dir) / lidar_filename),
                     "bbox": bbox
                 }
+                
                 f_out.write(json.dumps(json_obj) + "\n")
-                f_out.flush()  # flush after each line
+                # f_out.flush() # Not strictly necessary if buffering=1 is set
 
-    print(f"[DONE] Triplets saved to {save_jsonl_path}, images in {image_dir}")
-
+    print(f"[DONE] Triplets saved to {save_jsonl_path}")
+    
 # https://github.com/nutonomy/nuscenes-devkit/blob/master/python-sdk/nuscenes/nuscenes.py, render_annotation
 def crop_annotation_nusc(nusc, ann_token, sample_record, margin=5, min_ratio=0.8):
     assert 'LIDAR_TOP' in sample_record['data'].keys(), 'Error: No LIDAR_TOP in data, unable to render.'
