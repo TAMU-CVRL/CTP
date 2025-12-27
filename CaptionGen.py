@@ -1,114 +1,125 @@
-from transformers import AutoProcessor, AutoModelForVision2Seq
+# CaptionGen.py
+# ----------------------------------------
+# Utilizes a Vision-Language Model to generate captions based on cropped images and annotations.
+# ----------------------------------------
+
+import json
+import os
+import torch
+import argparse
+import tarfile
+from pathlib import Path
+from io import BytesIO
+from typing import Optional
+
 from PIL import Image
 from tqdm import tqdm
-import json, os, torch
-import tarfile
-from io import BytesIO
-from pathlib import Path
-from PIL import Image
+from transformers import AutoProcessor, AutoModelForVision2Seq
 
 from utils.caption_utils import caption_generate
 from utils.processing import resize_with_aspect_ratio
 
-prompt = "Provide one factual sentence describing its visual attributes, including color, geometry, relative scale, and any unique features visible."
-system = "You are an assistant that generates concise, factual object captions. Do not mention 'image' or 'scene'."
+class UniversalCaptioner:
+    """A smart captioner that infers data_root and tar_path from the JSONL location."""
+    def __init__(self, model_id: str, PROMPT: str, SYSTEM: str, device: str = "auto"):
+        print(f"[INFO] Loading model: {model_id}")
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            model_id, 
+            torch_dtype=torch.bfloat16, 
+            device_map=device,
+            trust_remote_code=True
+        ).eval()
+        self.prompt = PROMPT
+        self.system = SYSTEM
+        self.tar_handle: Optional[tarfile.TarFile] = None
 
-# Automatically locate tar based on jsonl path
-def get_tar_for_jsonl(jsonl_path):
-    data_dir = Path(jsonl_path).parent
-    tar_path = data_dir / "nuscenes_images.tar"
-    if not tar_path.exists():
-        raise FileNotFoundError(f"Cannot find TAR archive at {tar_path}")
-    print(f"[INFO] Using TAR archive: {tar_path}")
-    return tarfile.open(tar_path, "r")
-
-# Read image from TAR directly
-def read_image_from_tar(tar, rel_path):
-    # Remove possible prefix like "data/nuscenes_images/"
-    rel_path = rel_path.replace("data/nuscenes_images/", "")
-    try:
-        member = tar.getmember(rel_path)
-    except KeyError:
-        raise FileNotFoundError(f"Image {rel_path} not found in tar archive")
-    file = tar.extractfile(member)
-    return Image.open(BytesIO(file.read())).convert("RGB")
-
-def generate_triplet_captions_inplace(
-    jsonl_path,
-    processor,
-    model,
-    skip_existing=True,
-    save_every=100,
-):
-    # load existing records
-    with open(jsonl_path, "r") as f:
-        records = [json.loads(line.strip()) for line in f]
-    print(f"Loaded {len(records)} records from {jsonl_path}")
-
-    # check whether a tmp file exists
-    tmp_path = jsonl_path + ".tmp"
-    processed = 0
-    if os.path.exists(tmp_path):
-        with open(tmp_path, "r") as f:
-            existing = [json.loads(line.strip()) for line in f]
-        processed = len(existing)
-        print(f"Resuming from checkpoint: already processed {processed} samples.")
-    else:
-        existing = []
-
-    updated = 0
-    processed_records = []
-
-    # tar = get_tar_for_jsonl(jsonl_path)
-
-    for i, rec in enumerate(tqdm(records[processed:], desc="Generating Captions", initial=processed, total=len(records))):
-        if skip_existing and rec.get("caption", "").strip():
-            processed_records.append(rec)
-            continue
-
-        label = rec["label"]
-        image_path = rec["image_path"]
-        image = Image.open(image_path).convert("RGB")
-        # image = read_image_from_tar(tar, rec["image_path"])
-
-        describe = f"This image shows a {label} object in an autonomous driving scene."
-        resized_image = resize_with_aspect_ratio(image, 256)
+    def load_image(self, rel_path: str, data_root: Path) -> Image.Image:
+        """Attempts to load from an auto-detected TAR first, then falls back to disk."""
+        if self.tar_handle:
+            try:
+                member = self.tar_handle.getmember(rel_path)
+                return Image.open(BytesIO(self.tar_handle.extractfile(member).read())).convert("RGB")
+            except (KeyError, AttributeError):
+                pass
         
-        caption = caption_generate(describe, prompt, system, resized_image, processor, model)
-        if "assistant" in caption:
-            caption = caption.split("assistant")[-1].strip()
-        if "\n" in caption:
-            caption = caption.split("\n")[0].strip()
-        rec["caption"] = caption
-        updated += 1
+        # Fallback to local file system: data_root / image_path
+        img_path = data_root / rel_path
+        return Image.open(img_path).convert("RGB")
 
-        processed_records.append(rec)
+    def clean_caption(self, text: str) -> str:
+        """Extracts the first factual sentence from model output."""
+        if "assistant" in text.lower():
+            text = text.split("assistant")[-1]
+        return text.strip().split("\n")[0].strip()
 
-        # Write to temp file periodically
-        if (i + 1) % save_every == 0:
-            with open(tmp_path, "a") as f:
-                for r in processed_records:
-                    f.write(json.dumps(r) + "\n")
-            processed_records.clear()
-            print(f"Saved {i+1}/{len(records)} samples to temp file.")
+    def process(self, jsonl_path_str: str):
+        # 1. Automatic Path Inference
+        jsonl_path = Path(jsonl_path_str).resolve()
+        data_root = jsonl_path.parent
+        print(f"[INFO] Target JSONL: {jsonl_path}")
+        print(f"[INFO] Inferred Data Root: {data_root}")
 
-    # Write remaining records
-    if processed_records:
-        with open(tmp_path, "a") as f:
-            for r in processed_records:
-                f.write(json.dumps(r) + "\n")
+        # 2. Automatic TAR Detection (looks for any .tar file in the same folder)
+        tar_files = list(data_root.glob("*.tar"))
+        if tar_files:
+            # Prioritize a tar file that contains 'image' in the name if multiple exist
+            selected_tar = next((t for t in tar_files if "image" in t.name.lower()), tar_files[0])
+            print(f"[INFO] TAR archive detected: {selected_tar.name}")
+            self.tar_handle = tarfile.open(selected_tar, "r")
 
-     # Replace original file with updated temp file
-    os.replace(tmp_path, jsonl_path)
-    print(f"Finished! Updated {updated} captions in {jsonl_path}")
+        # 3. Checkpoint Setup
+        tmp_path = jsonl_path.with_suffix(".jsonl.tmp")
+        processed_count = 0
+        if tmp_path.exists():
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                processed_count = sum(1 for _ in f)
+            print(f"[INFO] Resuming from record {processed_count}")
 
-model_id = "Qwen/Qwen3-VL-8B-Instruct"
-processor = AutoProcessor.from_pretrained(model_id)
-model = AutoModelForVision2Seq.from_pretrained(model_id, torch_dtype=torch.bfloat16, device_map="auto")
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            all_lines = f.readlines()
 
-generate_triplet_captions_inplace(
-    jsonl_path="/home/ximeng/Documents/SparseCLIP/data/nuscenes_triplet_val.jsonl",
-    processor=processor,
-    model=model,
-    skip_existing=True,   # skip existing captions
-)
+        # 4. Main Processing Loop
+        with open(tmp_path, "a", encoding="utf-8") as out_f:
+            for i, line in enumerate(tqdm(all_lines[processed_count:], desc="Captioning"), start=processed_count):
+                record = json.loads(line)
+                
+                # Skip if already captioned
+                if record.get("caption"):
+                    out_f.write(json.dumps(record) + "\n")
+                    continue
+
+                try:
+                    img = self.load_image(record["image_path"], data_root)
+                    resized_img = resize_with_aspect_ratio(img, 256)
+                    
+                    context = f"This image shows a {record.get('label', 'object')} in a driving scene."
+                    raw_out = caption_generate(context, self.prompt, self.system, resized_img, self.processor, self.model)
+                    record["caption"] = self.clean_caption(raw_out)
+                    
+                except Exception as e:
+                    print(f"\n[ERROR] Failed at {record.get('image_path')}: {e}")
+                    record["caption"] = "" 
+
+                out_f.write(json.dumps(record) + "\n")
+                if i % 20 == 0: out_f.flush()
+
+        # 5. Finalize
+        if self.tar_handle: self.tar_handle.close()
+        os.replace(tmp_path, jsonl_path)
+        print(f"[SUCCESS] Updated {jsonl_path.name}")
+
+def main():
+    PROMPT = "Provide one factual sentence describing its visual attributes, including color, geometry, relative scale, and any unique features visible."
+    SYSTEM = "You are an assistant that generates concise, factual object captions. Do not mention 'image' or 'scene'."
+
+    parser = argparse.ArgumentParser(description="Smart VLM Captioner")
+    parser.add_argument("--jsonl_path", type=str, help="Path to the JSONL file")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3-VL-8B-Instruct", help="Pretrained model ID")
+    args = parser.parse_args()
+
+    worker = UniversalCaptioner(model_id=args.model, PROMPT=PROMPT, SYSTEM=SYSTEM, device="auto")
+    worker.process(args.jsonl_path)
+
+if __name__ == "__main__":
+    main()

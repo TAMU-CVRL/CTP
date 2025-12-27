@@ -106,7 +106,7 @@ def crop_lidar_with_obb(pcd_points, box3d, min_points=5):
 ### Main Extraction Function ###
 def extract_and_save_waymo_triplets(
     data_path,
-    split="validation",
+    split="val",
     save_path="dataset/waymo_triplets/",
     min_points=15,
     margin=5,
@@ -116,7 +116,10 @@ def extract_and_save_waymo_triplets(
     sample_interval=2.0,
     segment_filter=None
 ):
-    split_dir = os.path.join(data_path, split)
+
+    split_map = {'val': 'validation', 'train': 'training'} # Training split not publicly available
+    original_split = split_map.get(split, 'validation')
+    split_dir = os.path.join(data_path, original_split)
     save_jsonl = os.path.join(save_path, f"waymo_triplet_{split}.jsonl")
     image_dir = os.path.join(save_path, "waymo_image", split)
     lidar_dir = os.path.join(save_path, "waymo_lidar", split)
@@ -300,12 +303,8 @@ def main():
                          help="Format for saved LiDAR point clouds.")
     args = parser.parse_args()
 
-    split_map = {'val': 'validation'} # Training split not publicly available
-    args.split = split_map.get(args.split, 'validation')
-
     print(f"{'='*60}")
     print(f"[INFO] Starting Waymo Triplet Extraction")
-    print(f"[INFO] Source: {args.data_path}/{args.split}")
     print(f"[INFO] Destination: {args.save_path}")
     print(f"[INFO] Split: {args.split}")
     print(f"[INFO] Sampling Interval: {args.sample_interval}s")
