@@ -1,3 +1,8 @@
+# TripletBuilder.py
+# ----------------------------------------
+# Unified Dataset Extractor for NuScenes and KITTI Triplets
+# ----------------------------------------
+
 import argparse
 from pathlib import Path
 from utils.data_utils import save_triplet_dataset_jsonl
@@ -28,7 +33,7 @@ def main():
     # --- NuScenes Specific Arguments ---
     parser.add_argument("--version", type=str, default="v1.0-trainval",
                         help="[NuScenes] Dataset version (e.g., v1.0-mini, v1.0-trainval)")
-    parser.add_argument("--nusc_img_dir", type=str, default="nuscenes_images",
+    parser.add_argument("--nusc_img_dir", type=str, default="nuscenes_image",
                         help="[NuScenes] Subfolder name for saved images.")
     parser.add_argument("--nusc_lidar_dir", type=str, default="nuscenes_lidar",
                         help="[NuScenes] Subfolder name for NuScenes LiDAR data.")
@@ -36,12 +41,21 @@ def main():
     # --- KITTI Specific Arguments ---
     parser.add_argument("--min_points", type=int, default=15,
                         help="[KITTI] Min LiDAR points required inside a 3D bounding box.")
-    parser.add_argument("--kitti_img_dir", type=str, default="kitti_images",
+    parser.add_argument("--kitti_img_dir", type=str, default="kitti_image",
                         help="[KITTI] Subfolder name for saved images.")
     parser.add_argument("--kitti_lidar_dir", type=str, default="kitti_lidar",
                         help="[KITTI] Subfolder name for KITTI LiDAR data.")
 
     args = parser.parse_args()
+
+    if args.dataset == 'nuscenes':
+        if args.split not in ['train', 'val']:
+            print(f"[ERROR] NuScenes extraction supports ['train', 'val'], but '{args.split}' was provided.")
+            exit(1)
+    elif args.dataset == 'kitti':
+        if args.split != 'train':
+            print(f"[ERROR] KITTI dataset extraction currently only supports '--split train'.")
+            exit(1)
 
     # Create base save directory
     save_path = Path(args.save_path)

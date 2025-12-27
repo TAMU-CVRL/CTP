@@ -118,8 +118,8 @@ def extract_and_save_waymo_triplets(
 ):
     split_dir = os.path.join(data_path, split)
     save_jsonl = os.path.join(save_path, f"waymo_triplet_{split}.jsonl")
-    image_dir = os.path.join(save_path, "waymo_images", split)
-    lidar_dir = os.path.join(save_path, "waymo_lidars", split)
+    image_dir = os.path.join(save_path, "waymo_image", split)
+    lidar_dir = os.path.join(save_path, "waymo_lidar", split)
     os.makedirs(save_path, exist_ok=True)
     os.makedirs(image_dir, exist_ok=True)
     os.makedirs(lidar_dir, exist_ok=True)
@@ -233,8 +233,8 @@ def extract_and_save_waymo_triplets(
                     lidar_filename = f"{base_name}.{lidar_format}"
                     img_path = os.path.join(image_dir, img_filename)
                     lidar_path = os.path.join(lidar_dir, lidar_filename)
-                    img_rel_path = os.path.join("waymo_images", split, img_filename)
-                    lidar_rel_path = os.path.join("waymo_lidars", split, lidar_filename)
+                    img_rel_path = os.path.join("waymo_image", split, img_filename)
+                    lidar_rel_path = os.path.join("waymo_lidar", split, lidar_filename)
 
                     # skip duplicates
                     write_key = (seg_id, lidar_ts, cam_name, obj_id)
@@ -277,7 +277,7 @@ def main():
     paths = parser.add_argument_group('Paths')
     paths.add_argument("--data_path", type=str, required=True,
                        help="Path to the Waymo Open Dataset root folder.")
-    paths.add_argument("--save_path", type=str, default="datasets/waymo_triplets/",
+    paths.add_argument("--save_path", type=str, default="dataset/waymo_triplets/",
                        help="Folder to save the output dataset file.")
     paths.add_argument("--split", type=str, choices=['val'], 
                        default='val', help="Dataset split to process.")
