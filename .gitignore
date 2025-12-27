@@ -3,6 +3,10 @@
 *.pth
 *.h5
 
+# ignore image and numpy files
+*.png
+*.npy
+
 # ignore Python cache files
 __pycache__/
 *.py[cod]

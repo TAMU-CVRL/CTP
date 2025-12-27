@@ -14,7 +14,7 @@ def main():
     # --- Common Arguments ---
     parser.add_argument("--dataset", type=str, choices=['nuscenes', 'kitti'], required=True,
                         help="Target dataset to process: 'nuscenes' or 'kitti'")
-    parser.add_argument("--data_path", type=str, default="/path/to/dataset/",
+    parser.add_argument("--data_path", type=str, required=True,
                         help="Root directory of the raw dataset.")
     parser.add_argument("--save_path", type=str, default="dataset/",
                         help="Base directory to save output JSONL and images.")

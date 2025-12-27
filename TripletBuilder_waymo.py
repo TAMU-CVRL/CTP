@@ -116,7 +116,6 @@ def extract_and_save_waymo_triplets(
     sample_interval=2.0,
     segment_filter=None
 ):
-    
     split_dir = os.path.join(data_path, split)
     save_jsonl = os.path.join(save_path, f"waymo_triplet_{split}.jsonl")
     image_dir = os.path.join(save_path, "waymo_images", split)
@@ -128,14 +127,18 @@ def extract_and_save_waymo_triplets(
     lidar_paths = glob.glob(os.path.join(split_dir, "lidar", "*.parquet"))
     all_segments = sorted([os.path.basename(p).replace(".parquet", "") for p in lidar_paths])
     if segment_filter is not None:
-        if all(isinstance(x, int) for x in segment_filter):
+        try:
+            processed_filter = [int(x) if x.isdigit() else x for x in segment_filter]
+        except ValueError:
+            processed_filter = segment_filter            
+        if all(isinstance(x, int) for x in processed_filter):
             # interpret as indices
-            segment_ids = [all_segments[i] for i in segment_filter if 0 <= i < len(all_segments)]
-            print(f"[INFO] Using segment indices {segment_filter}")
-        elif all(isinstance(x, str) for x in segment_filter):
+            segment_ids = [all_segments[i] for i in processed_filter if 0 <= i < len(all_segments)]
+            print(f"[INFO] Using segment indices {processed_filter}")
+        elif all(isinstance(x, str) for x in processed_filter):
             # interpret as segment_id strings
-            segment_ids = [s for s in all_segments if s in segment_filter]
-            print(f"[INFO] Using segment IDs: {segment_filter}")
+            segment_ids = [s for s in all_segments if s in processed_filter]
+            print(f"[INFO] Using segment IDs: {processed_filter}")
         else:
             raise ValueError("segment_filter must be a list of indices (int) or IDs (str)")
     else:
@@ -226,8 +229,12 @@ def extract_and_save_waymo_triplets(
 
                     obj_id = box3d.key.laser_object_id
                     base_name = f"{seg_id}_{lidar_ts}_{cam_name}_{obj_id}_{label}"
-                    img_path = os.path.join(image_dir, f"{base_name}.{image_format}")
-                    lidar_path = os.path.join(lidar_dir, f"{base_name}.{lidar_format}")
+                    img_filename = f"{base_name}.{image_format}"
+                    lidar_filename = f"{base_name}.{lidar_format}"
+                    img_path = os.path.join(image_dir, img_filename)
+                    lidar_path = os.path.join(lidar_dir, lidar_filename)
+                    img_rel_path = os.path.join("waymo_images", split, img_filename)
+                    lidar_rel_path = os.path.join("waymo_lidars", split, lidar_filename)
 
                     # skip duplicates
                     write_key = (seg_id, lidar_ts, cam_name, obj_id)
@@ -248,8 +255,8 @@ def extract_and_save_waymo_triplets(
                         "timestamp": lidar_ts,
                         "label_id": label_id,
                         "label": label,
-                        "image_path": img_path,
-                        "lidar_path": lidar_path,
+                        "image_path": img_rel_path,
+                        "lidar_path": lidar_rel_path,
                         "bbox": bbox,
                         "camera_name": cam_name,
                         "laser_object_id": obj_id
@@ -268,12 +275,12 @@ def main():
     )
 
     paths = parser.add_argument_group('Paths')
-    paths.add_argument("--data_path", type=str, default="/path/to/waymo/dataset/",
+    paths.add_argument("--data_path", type=str, required=True,
                        help="Path to the Waymo Open Dataset root folder.")
     paths.add_argument("--save_path", type=str, default="datasets/waymo_triplets/",
                        help="Folder to save the output dataset file.")
-    paths.add_argument("--split", type=str, choices=['training', 'validation', 'testing'], 
-                       default='validation', help="Dataset split to process.")
+    paths.add_argument("--split", type=str, choices=['val'], 
+                       default='val', help="Dataset split to process.")
     quality = parser.add_argument_group('Quality Filters')
     quality.add_argument("--min_points", type=int, default=15,
                          help="Min LiDAR points inside a 3D box to be valid.")
@@ -284,8 +291,8 @@ def main():
     sampling = parser.add_argument_group('Sampling')
     sampling.add_argument("--sample_interval", type=float, default=4.0, 
                           help="Time interval (seconds) to sample frames (1 segment ≈ 20s).")
-    sampling.add_argument("--segment_filter", type=str, nargs='*', default=list(range(0, 50)),
-                          help="List of segment IDs/indices to process. Default: first 50.")
+    sampling.add_argument("--segment_filter", type=str, nargs='*', default=None,
+                          help="List of segment IDs/indices to process. Example: --segment_filter {0..49}")
     formats = parser.add_argument_group('Output Formats')
     formats.add_argument("--image_format", type=str, choices=['png', 'jpg'], default='png',
                          help="Format for saved image crops.")
@@ -293,10 +300,14 @@ def main():
                          help="Format for saved LiDAR point clouds.")
     args = parser.parse_args()
 
+    split_map = {'val': 'validation'} # Training split not publicly available
+    args.split = split_map.get(args.split, 'validation')
+
     print(f"{'='*60}")
     print(f"[INFO] Starting Waymo Triplet Extraction")
     print(f"[INFO] Source: {args.data_path}/{args.split}")
     print(f"[INFO] Destination: {args.save_path}")
+    print(f"[INFO] Split: {args.split}")
     print(f"[INFO] Sampling Interval: {args.sample_interval}s")
     print(f"{'='*60}")
 
