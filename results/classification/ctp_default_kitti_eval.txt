@@ -1,0 +1,12 @@
+
+------ KITTI EVAL @ 2025-12-28 16:07:15.846285 ------
+Config: loss_fn=l2_similarity_loss_completed
+alpha: None
+Dataset: kitti_triplet_train
+------------------------------
+car            :  94.24% | Top-3: car: 94.2%, van: 2.9%, pedestrian: 2.2%
+pedestrian     :  93.10% | Top-3: pedestrian: 93.1%, car: 6.9%, van: 0.0%
+truck          :   7.14% | Top-3: van: 57.1%, car: 35.7%, truck: 7.1%
+van            :  34.38% | Top-3: car: 46.9%, van: 34.4%, truck: 9.4%
+------------------------------
+Overall Accuracy: 85.27%

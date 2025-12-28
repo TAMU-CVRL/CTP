@@ -46,3 +46,7 @@ python3 ./CTPEvaluator.py --config configs/ctp_default.yaml --eval_path dataset/
 ```py
 python3 ./CTPEvaluator.py --config configs/ctp_default.yaml --eval_path dataset/waymo_triplets/waymo_triplet_val.jsonl
 ```
+
+```py
+python3 ./eval_align.py --config configs/ctp_default.yaml --eval_path dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl --after_ckpt checkpoints/ckpt_epoch9.pt --label truck
+```
