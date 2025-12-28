@@ -7,6 +7,7 @@
 # ignore image and numpy files
 *.png
 *.npy
+*.tar
 
 # ignore Python cache files
 __pycache__/
