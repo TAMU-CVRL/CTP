@@ -1,0 +1,13 @@
+
+--- NUSCENES EVALUATION @ 2025-12-27 23:20:21.583535 ---
+car            :   0.00% | Top Distribution: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+trafficcone    :   0.00% | Top Distribution: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+truck          :   0.00% | Top Distribution: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+Overall Accuracy: 0.00%
+
+--- NUSCENES EVAL @ 2025-12-27 23:27:35.124632 ---
+Config: loss_fn=r2_similarity_loss, alpha=None
+car            :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+trafficcone    :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+truck          :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+Overall Accuracy: 0.00%

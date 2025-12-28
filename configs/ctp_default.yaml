@@ -27,12 +27,12 @@ Train:
   use_tb: True
   use_wandb: True
   wandb_mode: "online" # online, offline
-  checkpoint_path: checkpoints/ctp_default/ckpt_2.pt
+  checkpoint_path: Null
 
 Eval:
-  eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
+  # eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
   device: "cuda"
-  loss_fn: "abs_cosine_matrix_loss_eval" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
-  alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
+  # loss_fn: "r2_similarity_loss" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
+  # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
   batch_size: 256
-  checkpoint_path: "checkpoints/128_obj2_r2_cube_all/ckpt_epoch9.pt"
+  checkpoint_path: checkpoints/ctp_default/ckpt_9.pt
