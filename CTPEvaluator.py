@@ -42,8 +42,8 @@ class CTPEvaluator:
         # 2. Automatically detect dataset type from the JSONL path
         self.eval_path = self.cfg["Eval"]["eval_data_path"]
         self.dataset_type = self._detect_dataset_type(self.eval_path)
-        print(f"[*] Detected dataset type: {self.dataset_type}")
-        print(f"[*] Evaluation parameters: loss_fn={self.cfg['Model'].get('loss_fn')}, alpha={self.cfg['Model'].get('alpha')}")
+        print(f"[Info] Detected dataset type: {self.dataset_type}")
+        print(f"[Info] Evaluation parameters: loss_fn={self.cfg['Model'].get('loss_fn')}, alpha={self.cfg['Model'].get('alpha')}")
 
         # 3. Initialize label mapping
         self._setup_label_mapping()
@@ -93,16 +93,16 @@ class CTPEvaluator:
         self.merged_classes = sorted(set([v for v in self.label_map.values() if v]))
         self.all_prompts = [f"{self.prompt_template}{cls}" for cls in self.merged_classes]
 
-    def _handle_path(self, key):
-        """Prioritizes local paths in TMPDIR if available for performance."""
-        path = self.cfg["Dataset"].get(key, None)
-        tmpdir = os.getenv("TMPDIR", None)
-        if tmpdir and path:
-            file_name = os.path.basename(path)
-            local_path = os.path.join(tmpdir, file_name)
-            if os.path.exists(local_path):
-                return local_path
-        return path
+    # def _handle_path(self, key):
+    #     """Prioritizes local paths in TMPDIR if available for performance."""
+    #     path = self.cfg["Dataset"].get(key, None)
+    #     tmpdir = os.getenv("TMPDIR", None)
+    #     if tmpdir and path:
+    #         file_name = os.path.basename(path)
+    #         local_path = os.path.join(tmpdir, file_name)
+    #         if os.path.exists(local_path):
+    #             return local_path
+    #     return path
 
     def _build_model(self):
         """Instantiates the model components using the (potentially overridden) cfg."""
@@ -135,8 +135,8 @@ class CTPEvaluator:
         sparse_method = self.cfg["Dataset"]["sparse_method"]
         sparse_to_dense = load_sparse_method(sparse_method)
         
-        image_tar = self._handle_path("image_tar_path")
-        lidar_tar = self._handle_path("lidar_tar_path")
+        # image_tar = self._handle_path("image_tar_path")
+        # lidar_tar = self._handle_path("lidar_tar_path")
 
         common_args = {
             "jsonl_file": self.eval_path,
@@ -148,9 +148,9 @@ class CTPEvaluator:
         if self.dataset_type == "nuscenes":
             dataset = Triplet_Object_Nuscenes(**common_args)
         elif self.dataset_type == "kitti":
-            dataset = Triplet_Object_KITTI(**common_args, image_tar_path=image_tar)
+            dataset = Triplet_Object_KITTI(**common_args)
         elif self.dataset_type == "waymo":
-            dataset = Triplet_Object_Waymo(**common_args, image_tar_path=image_tar, lidar_tar_path=lidar_tar)
+            dataset = Triplet_Object_Waymo(**common_args)
         
         return DataLoader(
             dataset, 
@@ -162,7 +162,7 @@ class CTPEvaluator:
 
     def _load_checkpoint(self, path):
         """Loads state_dict and handles DDP prefixes."""
-        print(f"[*] Loading checkpoint: {path}")
+        print(f"[Info] Loading checkpoint: {path}")
         ckpt = torch.load(path, map_location=self.device, weights_only=True)
         state_dict = ckpt['model_state_dict']
         new_state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     
     # New optional arguments to override config file
     parser.add_argument("--eval_path", type=str, required=True, help="Override eval_data_path in config")
-    parser.add_argument("--loss_fn", type=str, default="r2_similarity_loss", help="Override loss_fn in config")
+    parser.add_argument("--loss_fn", type=str, default="l2_similarity_loss_completed", help="Override loss_fn in config")
     parser.add_argument("--alpha", type=float, default=None, help="Override alpha in config")
     
     args = parser.parse_args()

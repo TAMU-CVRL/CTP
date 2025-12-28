@@ -11,3 +11,35 @@ car            :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian
 trafficcone    :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
 truck          :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
 Overall Accuracy: 0.00%
+
+--- NUSCENES EVAL @ 2025-12-27 23:41:54.370521 ---
+Config: loss_fn=r2_similarity_loss, alpha=None
+car            :   0.00% | Top-3: trailer: 33.3%, construction: 33.3%, trafficcone: 33.3%
+trafficcone    :  33.33% | Top-3: trafficcone: 33.3%, car: 33.3%, motorcycle: 16.7%
+truck          :   0.00% | Top-3: bus: 100.0%, trafficcone: 0.0%, trailer: 0.0%
+Overall Accuracy: 20.00%
+
+--- NUSCENES EVAL @ 2025-12-27 23:42:14.195469 ---
+Config: loss_fn=r2_similarity_loss, alpha=None
+car            :   0.00% | Top-3: trailer: 50.0%, construction: 25.0%, trafficcone: 25.0%
+pedestrian     :  66.67% | Top-3: pedestrian: 66.7%, truck: 33.3%, trailer: 0.0%
+trafficcone    :   0.00% | Top-3: barrier: 100.0%, trafficcone: 0.0%, pedestrian: 0.0%
+trailer        : 100.00% | Top-3: trailer: 100.0%, pedestrian: 0.0%, motorcycle: 0.0%
+truck          :   0.00% | Top-3: bus: 100.0%, trafficcone: 0.0%, trailer: 0.0%
+Overall Accuracy: 30.00%
+
+--- NUSCENES EVAL @ 2025-12-27 23:44:30.915063 ---
+Config: loss_fn=l2_similarity_loss_completed, alpha=None
+car            :  50.00% | Top-3: car: 50.0%, pedestrian: 25.0%, trafficcone: 25.0%
+pedestrian     : 100.00% | Top-3: pedestrian: 100.0%, trailer: 0.0%, trafficcone: 0.0%
+trafficcone    :   0.00% | Top-3: pedestrian: 100.0%, trailer: 0.0%, trafficcone: 0.0%
+trailer        : 100.00% | Top-3: trailer: 100.0%, pedestrian: 0.0%, motorcycle: 0.0%
+truck          :   0.00% | Top-3: trailer: 100.0%, pedestrian: 0.0%, motorcycle: 0.0%
+Overall Accuracy: 60.00%
+
+--- NUSCENES EVAL @ 2025-12-27 23:44:40.579008 ---
+Config: loss_fn=l2_similarity_loss_completed, alpha=None
+car            :  33.33% | Top-3: bus: 33.3%, motorcycle: 33.3%, car: 33.3%
+trafficcone    :  33.33% | Top-3: car: 33.3%, pedestrian: 33.3%, trafficcone: 33.3%
+truck          :   0.00% | Top-3: bus: 100.0%, trafficcone: 0.0%, trailer: 0.0%
+Overall Accuracy: 30.00%

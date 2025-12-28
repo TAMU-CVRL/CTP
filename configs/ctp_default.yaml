@@ -3,11 +3,12 @@ Name: "ctp_default"
 Model:
   clip_model: "ViT-B/32"
   point_model: "PointNet2"
-  loss_fn: "r2_similarity_loss"
+  loss_fn: "l2_similarity_loss_completed"
   alpha: Null
   pc_only: False
 
 Dataset:
+  prompt: "This is a "
   sparse_method: "zero_pad"
   train_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl"
   detailed_caption: True
@@ -35,4 +36,4 @@ Eval:
   # loss_fn: "r2_similarity_loss" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
   # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
   batch_size: 256
-  checkpoint_path: checkpoints/ctp_default/ckpt_9.pt
+  checkpoint_path: checkpoints/ckpt_epoch9.pt

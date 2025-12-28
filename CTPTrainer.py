@@ -70,7 +70,7 @@ class CTPTrainer:
             jsonl_file=self.cfg["Dataset"]["train_data_path"],
             image_transform=image_transform,
             sparse_to_dense_fn=sparse_to_dense,
-            prompt = 'A '
+            prompt = self.cfg["Dataset"].get("prompt", "This is a ")
         )
 
         sampler = DistributedSampler(dataset) if self.world_size > 1 else None
