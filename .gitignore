@@ -1,4 +1,5 @@
 # ignore model checkpoint files
+*.pt
 *.ckpt
 *.pth
 *.h5

@@ -2,6 +2,7 @@ import numpy as np
 import io
 import json
 from PIL import Image
+from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 from utils.pc_utils import lidar2camera_fov, segment_ground_o3d, zero_pad, load_lidar_bin
@@ -10,7 +11,7 @@ import tarfile
 from nuscenes.utils.data_classes import Box
 from nuscenes.utils.geometry_utils import points_in_box
 from pyquaternion import Quaternion
-from utils.box2image import crop_annotation
+from utils.img_utils import crop_annotation
 
 class Nuscenes_TripletDataset(Dataset):
     def __init__(self, base_dataset):
@@ -89,29 +90,149 @@ class Nuscenes_TripletDataset(Dataset):
             til_triplet.append((label, cropped_image, points_in_instance, bbox_inf))
         return til_triplet, all_bboxes
 
-class Triplet_Object(Dataset):
-    def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, image_tar_path = None, prompt="A "):
+# class Triplet_Object_Nuscenes(Dataset):
+#     def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, image_tar_path = None, prompt="A "):
+#         self.data = []
+#         with open(jsonl_file, "r") as f:
+#             for line in f:
+#                 self.data.append(json.loads(line))
+
+#         self.image_transform = image_transform
+#         self.sparse_to_dense_fn = sparse_to_dense_fn
+#         self.prompt = prompt
+#         self.image_tar_path = image_tar_path
+#         if self.image_tar_path is not None:
+#             # Open tar archive once
+#             self.tar = tarfile.open(image_tar_path, "r")
+#             self.members = {}
+#             for m in self.tar.getmembers():
+#                 rel_path = m.name
+#                 if rel_path.startswith("data/nuscenes_images/"):
+#                     rel_path = rel_path[len("data/nuscenes_images/"):]
+#                 self.members[rel_path] = m
+#             print(f"[INFO] Images will be loaded from TAR archive: {image_tar_path}")
+#         else:
+#             print(f"[INFO] Images will be loaded from disk directly.")    
+
+#     def __len__(self):
+#         return len(self.data)
+
+#     def __getitem__(self, idx):
+#         item = self.data[idx]
+        
+#         # Text processing
+#         label = self.prompt + item["label"]
+#         caption = item.get("caption", "")
+
+#         # Image processing
+#         if self.image_tar_path is None: # Load image from disk directlyimage
+#             img = Image.open(item["image_path"]).convert("RGB")
+#         else: # Load image from tar instead of disk
+#             img_rel_path = item["image_path"]
+#             if img_rel_path.startswith("data/nuscenes_images/"):
+#                 img_rel_path = img_rel_path[len("data/nuscenes_images/"):]
+            
+#             if img_rel_path not in self.members:
+#                 raise FileNotFoundError(f"{img_rel_path} not found in tar archive")
+
+#             img_member = self.members[img_rel_path]
+#             img_file = self.tar.extractfile(img_member)
+#             img = Image.open(io.BytesIO(img_file.read())).convert("RGB")
+
+#         img = self.image_transform(img)
+
+#         # Lidar processing
+#         lidar = torch.tensor(item["lidar"])
+#         lidar = self.sparse_to_dense_fn(lidar)
+
+#         return {
+#             "label": label,
+#             "caption": caption,
+#             "image": img,
+#             "lidar": lidar
+#         }
+
+class Triplet_Object_Nuscenes(Dataset):
+    def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, prompt=""):
+        # 1. Automatic Path Inference
+        jsonl_path = Path(jsonl_file).resolve()
+        self.data_root = jsonl_path.parent  # nuscenes_triplets
+        
+        # 2. Load JSONL Records
         self.data = []
-        with open(jsonl_file, "r") as f:
+        with open(jsonl_path, "r", encoding="utf-8") as f:
             for line in f:
                 self.data.append(json.loads(line))
 
         self.image_transform = image_transform
         self.sparse_to_dense_fn = sparse_to_dense_fn
         self.prompt = prompt
-        self.image_tar_path = image_tar_path
-        if self.image_tar_path is not None:
-            # Open tar archive once
-            self.tar = tarfile.open(image_tar_path, "r")
-            self.members = {}
-            for m in self.tar.getmembers():
-                rel_path = m.name
-                if rel_path.startswith("data/nuscenes_images/"):
-                    rel_path = rel_path[len("data/nuscenes_images/"):]
-                self.members[rel_path] = m
-            print(f"[INFO] Images will be loaded from TAR archive: {image_tar_path}")
-        else:
-            print(f"[INFO] Images will be loaded from disk directly.")    
+        
+        # 3. Archive Management
+        self.image_tar = None
+        self.lidar_tar = None
+        self.image_members = {}
+        self.lidar_members = {}
+
+        self._auto_detect_archives()
+
+    def _auto_detect_archives(self):
+        """Scans the directory for .tar files and maps their contents."""
+        # Find all .tar files in the same folder as the JSONL
+        tar_candidates = list(self.data_root.glob("*.tar"))
+        
+        for tar_path in tar_candidates:
+            name_lower = tar_path.name.lower()
+            try:
+                handle = tarfile.open(tar_path, "r")
+                members_map = {}
+                
+                for m in handle.getmembers():
+                    # Sanitize paths to match JSONL (e.g., nuscenes_image/train/...)
+                    clean_name = m.name
+                    # Remove common redundant prefixes like 'data/' or parent folder names
+                    if "image" in clean_name:
+                        idx = clean_name.find("image")
+                        # Capture from the start of the dataset name (e.g., 'nuscenes_image')
+                        clean_name = clean_name[max(0, clean_name.rfind("/", 0, idx) + 1):]
+                    elif "lidar" in clean_name:
+                        idx = clean_name.find("lidar")
+                        clean_name = clean_name[max(0, clean_name.rfind("/", 0, idx) + 1):]
+                    
+                    members_map[clean_name] = m
+
+                # Assign handle based on filename keywords
+                if "image" in name_lower:
+                    self.image_tar = handle
+                    self.image_members = members_map
+                    print(f"[INFO] Image TAR detected: {tar_path.name}")
+                elif "lidar" in name_lower:
+                    self.lidar_tar = handle
+                    self.lidar_members = members_map
+                    print(f"[INFO] LiDAR TAR detected: {tar_path.name}")
+                else:
+                    handle.close()
+            except Exception as e:
+                print(f"[WARN] Could not process tar {tar_path.name}: {e}")
+
+    def _load_resource(self, rel_path, tar_handle, members_map, is_numpy=False):
+        """Unified loader that checks the TAR first, then the local disk."""
+        # 1. Try loading from the Archive
+        if tar_handle and rel_path in members_map:
+            member = members_map[rel_path]
+            file_data = tar_handle.extractfile(member).read()
+            if is_numpy:
+                return np.load(io.BytesIO(file_data))
+            return Image.open(io.BytesIO(file_data)).convert("RGB")
+        
+        # 2. Fallback: Load from local Disk
+        disk_path = self.data_root / rel_path
+        if not disk_path.exists():
+            raise FileNotFoundError(f"Resource {rel_path} not found in TAR or disk folders.")
+        
+        if is_numpy:
+            return np.load(disk_path)
+        return Image.open(disk_path).convert("RGB")
 
     def __len__(self):
         return len(self.data)
@@ -119,30 +240,23 @@ class Triplet_Object(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         
-        # Text processing
+        # Text Logic
         label = self.prompt + item["label"]
         caption = item.get("caption", "")
 
-        # Image processing
-        if self.image_tar_path is None: # Load image from disk directlyimage
-            img = Image.open(item["image_path"]).convert("RGB")
-        else: # Load image from tar instead of disk
-            img_rel_path = item["image_path"]
-            if img_rel_path.startswith("data/nuscenes_images/"):
-                img_rel_path = img_rel_path[len("data/nuscenes_images/"):]
-            
-            if img_rel_path not in self.members:
-                raise FileNotFoundError(f"{img_rel_path} not found in tar archive")
-
-            img_member = self.members[img_rel_path]
-            img_file = self.tar.extractfile(img_member)
-            img = Image.open(io.BytesIO(img_file.read())).convert("RGB")
-
+        # Image Logic (Auto-detected Archive or Folder)
+        img = self._load_resource(item["image_path"], self.image_tar, self.image_members)
         img = self.image_transform(img)
 
-        # Lidar processing
-        lidar = torch.tensor(item["lidar"])
-        lidar = self.sparse_to_dense_fn(lidar)
+        # LiDAR Logic (Auto-detected Archive or Folder)
+        # Handle cases where lidar is path or coordinates
+        if "lidar_path" in item:
+            lidar_np = self._load_resource(item["lidar_path"], self.lidar_tar, self.lidar_members, is_numpy=True)
+            lidar_data = torch.from_numpy(lidar_np)
+        else:
+            lidar_data = torch.tensor(item["lidar"])
+            
+        lidar = self.sparse_to_dense_fn(lidar_data)
 
         return {
             "label": label,
@@ -150,8 +264,15 @@ class Triplet_Object(Dataset):
             "image": img,
             "lidar": lidar
         }
-    
-class Triplet_Scene(Dataset):
+
+    def __del__(self):
+        """Cleanup handles when the dataset is destroyed."""
+        if hasattr(self, 'image_tar') and self.image_tar:
+            self.image_tar.close()
+        if hasattr(self, 'lidar_tar') and self.lidar_tar:
+            self.lidar_tar.close()
+
+class Triplet_Scene_Nuscenes(Dataset):
     def __init__(self, jsonl_file, nusc, image_transform, sparse_to_dense_fn):
         self.data = []
         with open(jsonl_file, "r") as f:

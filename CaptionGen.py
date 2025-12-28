@@ -17,7 +17,7 @@ from tqdm import tqdm
 from transformers import AutoProcessor, AutoModelForVision2Seq
 
 from utils.caption_utils import caption_generate
-from utils.processing import resize_with_aspect_ratio
+from utils.img_utils import resize_with_aspect_ratio
 
 class UniversalCaptioner:
     """A smart captioner that infers data_root and tar_path from the JSONL location."""

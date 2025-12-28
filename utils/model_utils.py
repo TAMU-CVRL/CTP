@@ -3,6 +3,7 @@ import yaml
 import torch
 import torch.nn as nn
 from models.clip.model import CLIP
+from models.pointnet2 import pointnet2_encoder
 from tqdm import tqdm
 
 from transformers import (
@@ -173,3 +174,10 @@ def gather_features(text_features, image_features, lidar_features, local_loss=Fa
     all_lidar_features = _gather_one(lidar_features, gather_with_grad, world_size)
 
     return all_text_features, all_image_features, all_lidar_features
+
+def pc_backbone(pc_encoder, device):
+    if pc_encoder == "pointnet2":
+        pc_encoder = pointnet2_encoder.PointNet2Encoder().to(device)
+    else:
+        raise ValueError(f"Unknown lidar encoder: {pc_encoder}")
+    return pc_encoder

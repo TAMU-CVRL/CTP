@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 import numpy as np
 
-from utils.box2image import crop_annotation
+from utils.img_utils import crop_annotation
 import json
 from PIL import Image
 import tarfile

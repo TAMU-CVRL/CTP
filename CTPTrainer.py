@@ -5,6 +5,7 @@ import clip
 import wandb
 from tqdm import tqdm
 from datetime import datetime
+from pathlib import Path
 
 import torch
 import torch.optim as optim
@@ -15,10 +16,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models.ctp import ctp
 from models.pointnet2 import pointnet2_encoder
-from data.nuscenes_triplet import Triplet_Object
+from data.nuscenes_triplet import Triplet_Object_Nuscenes
 from utils.img_utils import image_transform
 from utils.pc_utils import load_sparse_method
-from utils.model_utils import get_clip_encoders, prepare_training, load_config, build_scheduler, gather_features
+from utils.model_utils import get_clip_encoders, prepare_training, load_config, build_scheduler, gather_features, pc_backbone
 
 class CTPTrainer:
     def __init__(self, cfg):
@@ -27,13 +28,9 @@ class CTPTrainer:
         self.world_size = 1
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # initialize distributed training if needed
         self._init_distributed()
-        # build dataloader
         self.train_dataloader = self._build_dataloader()
-        # build model
         self.model = self._build_model()
-        # build optimizer and scheduler
         self.optimizer, self.scheduler = self._build_optimizer_and_scheduler()
         # initialize logging
         self.step = 0
@@ -69,11 +66,11 @@ class CTPTrainer:
                     if self.rank == 0:
                         print(f"[INFO] Using local dataset at {tar_path}")
 
-        dataset = Triplet_Object(
+        dataset = Triplet_Object_Nuscenes(
             jsonl_file=self.cfg["Dataset"]["train_data_path"],
             image_transform=image_transform,
             sparse_to_dense_fn=sparse_to_dense,
-            image_tar_path=tar_path
+            prompt = 'A '
         )
 
         sampler = DistributedSampler(dataset) if self.world_size > 1 else None
@@ -83,13 +80,14 @@ class CTPTrainer:
             sampler=sampler,
             shuffle=(sampler is None),
             num_workers=self.cfg["Train"].get("num_workers", 0),
-            pin_memory=True
+            pin_memory=True,
+            drop_last=True # drop last incomplete batch
         )
 
     def _build_model(self):
         pc_only = self.cfg["Model"]["pc_only"]
         clip_model_name = self.cfg["Model"]["clip_model"]
-        lidar_encoder_name = self.cfg["Model"]["lidar_model"].strip().lower()
+        pc_encoder_name = self.cfg["Model"]["point_model"].strip().lower()
         
         if pc_only:
             print(f"[INFO] Only Lidar encoder is trained.")
@@ -104,16 +102,12 @@ class CTPTrainer:
             text_encoder.to(self.device)
             img_encoder.to(self.device)
 
-        # TODO: allow different encoders
-        if lidar_encoder_name == "pointnet2":
-            lidar_encoder = pointnet2_encoder.PointNet2Encoder().to(self.device)
-        else:
-            raise ValueError(f"Unknown lidar encoder: {lidar_encoder_name}")
+        pc_encoder = pc_backbone(pc_encoder_name, self.device)
         
         model = ctp(
             text_encoder=text_encoder,
             image_encoder=img_encoder,
-            lidar_encoder=lidar_encoder,
+            lidar_encoder=pc_encoder,
             loss_fn=self.cfg["Model"]["loss_fn"],
             alpha=self.cfg["Model"]["alpha"]
         ).to(self.device)
@@ -139,22 +133,38 @@ class CTPTrainer:
 
     def _init_logging(self):
             self.use_wandb = self.cfg["Train"].get("use_wandb", False)
-            self.use_tb = self.cfg["Train"].get("use_tensorboard", False)
+            self.use_tb = self.cfg["Train"].get("use_tb", False)
+
+            resume_id = self.cfg["Train"].get("wandb_id", None)
+            resume_tb_dir = self.cfg["Train"].get("tb_log_dir", None)
 
             if self.rank == 0:
                 if self.use_wandb:
+                    print(f"[WandB] {'Resuming' if resume_id else 'Initializing'} WandB logging...")
                     wandb.init(
                         project="ctp", 
                         name=self.cfg["Name"], 
-                        mode=self.cfg["Train"].get("wandb_mode", "offline")
+                        mode=self.cfg["Train"].get("wandb_mode", "offline"),
+                        id=resume_id,
+                        resume="allow"
                     )
-                    wandb.config.update(self.cfg)
+                    if resume_id is None:
+                        self.cfg["Train"]["wandb_id"] = wandb.run.id
+                        print(f"[WandB] New Run started with ID: {wandb.run.id}")
+                    wandb.config.update(self.cfg, allow_val_change=True)
+                else:
+                    print(f"[WandB] WandB logging is disabled.")
                 
                 if self.use_tb:
-                    log_dir = self.cfg["Train"].get("tensorboard_logdir") or \
-                            f"runs/{datetime.now().strftime('%b%d_%H-%M-%S')}_{self.cfg['Name']}"
+                    if resume_tb_dir and os.path.exists(resume_tb_dir):
+                        log_dir = resume_tb_dir
+                        print(f"[TensorBoard] Resuming from: {log_dir}")
+                    else:
+                        print(f"[TensorBoard] Initializing TensorBoard logging...")
+                        log_dir = f"tb_logs/{datetime.now().strftime('%b%d_%H-%M-%S')}_{self.cfg['Name']}"
                     self.writer = SummaryWriter(log_dir=log_dir)
                 else:
+                    print(f"[TensorBoard] TensorBoard logging is disabled.")
                     self.writer = None
                 
                 os.makedirs(f"checkpoints/{self.cfg['Name']}", exist_ok=True)
@@ -165,11 +175,13 @@ class CTPTrainer:
     def _load_checkpoint_if_exists(self):
         ckpt_path = self.cfg["Train"].get("checkpoint_path")
         if ckpt_path:
-            ckpt = torch.load(ckpt_path, map_location=self.device)
+            ckpt = torch.load(ckpt_path, map_location=self.device, weights_only=True)
             model_to_load = self.model.module if self.world_size > 1 else self.model
             model_to_load.load_state_dict(ckpt['model_state_dict'])
             self.optimizer.load_state_dict(ckpt['optimizer_state_dict'])
             self.scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+            self.cfg["Train"]["wandb_id"] = ckpt.get('wandb_id', None)
+            self.cfg["Train"]["tb_log_dir"] = ckpt.get('tb_log_dir', None)
             self.start_epoch = ckpt['epoch'] + 1
             self.step = ckpt['step']
             print(f"Loaded checkpoint from {ckpt_path}, starting from epoch {self.start_epoch}")
@@ -177,14 +189,19 @@ class CTPTrainer:
     def save_checkpoint(self, epoch):
         if self.rank == 0:
             state_dict = self.model.module.state_dict() if self.world_size > 1 else self.model.state_dict()
-            path = f"checkpoints/{self.cfg['Name']}/ckpt_{epoch}.pt"
-            torch.save({
+            save_dir = Path(f"checkpoints/{self.cfg['Name']}")
+            path = save_dir / f"ckpt_{epoch}.pt"
+
+            checkpoint = {
                 'epoch': epoch,
                 'step': self.step,
                 'model_state_dict': state_dict,
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 'scheduler_state_dict': self.scheduler.state_dict(),
-            }, path)
+                'tb_log_dir': self.writer.get_logdir() if (self.use_tb and self.writer) else None,
+                'wandb_id': wandb.run.id if (self.use_wandb and wandb.run) else None,
+            }
+            torch.save(checkpoint, path)
 
     def train(self):
         prepare_training()
@@ -254,7 +271,8 @@ class CTPTrainer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, required=True)
+    parser.add_argument("--config_path", type=str, default="configs/ctp_default.yaml",
+                        help="Path to the config file.")
     args = parser.parse_args()
     
     config = load_config(args.config_path)
