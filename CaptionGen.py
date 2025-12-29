@@ -14,7 +14,7 @@ from typing import Optional
 
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, AutoModelForImageTextToText
 
 from utils.caption_utils import caption_generate
 from utils.img_utils import resize_with_aspect_ratio
@@ -24,9 +24,9 @@ class UniversalCaptioner:
     def __init__(self, model_id: str, PROMPT: str, SYSTEM: str, device: str = "auto"):
         print(f"[INFO] Loading model: {model_id}")
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        self.model = AutoModelForVision2Seq.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             model_id, 
-            torch_dtype=torch.bfloat16, 
+            dtype=torch.bfloat16, 
             device_map=device,
             trust_remote_code=True
         ).eval()

@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-from utils.data_utils import crop_annotation_kitti, compute_box_corners, points_in_3d_box
+from utils.data_utils import crop_annotation_kitti, compute_box_corners, points_in_3d_box, camera_box_to_lidar, load_calib
 from utils.pc_utils import segment_ground_o3d
 
 class KITTI_TripletDataset(Dataset):

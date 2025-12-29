@@ -184,13 +184,18 @@ class CTPTrainer:
             self.cfg["Train"]["tb_log_dir"] = ckpt.get('tb_log_dir', None)
             self.start_epoch = ckpt['epoch'] + 1
             self.step = ckpt['step']
-            print(f"Loaded checkpoint from {ckpt_path}, starting from epoch {self.start_epoch}")
+            print(f"[Info] Loaded checkpoint from {ckpt_path}, starting from epoch {self.start_epoch}")
 
-    def save_checkpoint(self, epoch):
+    def save_checkpoint(self, epoch, name=None):
         if self.rank == 0:
             state_dict = self.model.module.state_dict() if self.world_size > 1 else self.model.state_dict()
             save_dir = Path(f"checkpoints/{self.cfg['Name']}")
-            path = save_dir / f"ckpt_{epoch}.pt"
+            save_dir.mkdir(parents=True, exist_ok=True)
+
+            if name:
+                path = save_dir / f"{name}.pt"
+            else:
+                path = save_dir / f"ckpt_{epoch}.pt"
 
             checkpoint = {
                 'epoch': epoch,
@@ -202,6 +207,7 @@ class CTPTrainer:
                 'wandb_id': wandb.run.id if (self.use_wandb and wandb.run) else None,
             }
             torch.save(checkpoint, path)
+            print(f"[Info] Checkpoint saved to {path}")
 
     def train(self):
         prepare_training()
@@ -256,7 +262,6 @@ class CTPTrainer:
 
             # save checkpoint
             if self.world_size > 1: dist.barrier()
-            
             if self.rank == 0:
                 avg_loss = running_loss / max(updates_in_epoch, 1)
                 if self.use_tb and self.writer:
@@ -265,6 +270,11 @@ class CTPTrainer:
                     wandb.log({"Loss/train_epoch": avg_loss, "Epoch": epoch}, step=self.step)
                 print(f"--- Epoch {epoch} Done. Avg Loss: {avg_loss:.4f} ---")
                 self.save_checkpoint(epoch)
+
+        if self.world_size > 1: dist.barrier()
+        if self.rank == 0:
+            self.save_checkpoint(epoch, name="last_ckpt")
+            print("[Info] Training Completed.")
 
         if dist.is_initialized():
             dist.destroy_process_group()
