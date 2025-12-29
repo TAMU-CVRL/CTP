@@ -4,88 +4,15 @@ import tarfile
 import io
 import cv2
 from pathlib import Path
-from torch.utils.data import Dataset
 import numpy as np
-# from tqdm import tqdm
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-# from shapely.geometry import Point, Polygon
-from utils.data_utils import crop_annotation_kitti
+from utils.data_utils import crop_annotation_kitti, compute_box_corners, points_in_3d_box
 from utils.pc_utils import segment_ground_o3d
-def compute_box_corners(x, y, z, h, w, l, ry):
-    """
-    Compute 8 corners of 3D bounding box (KITTI camera coordinates)
-    Args:
-        x, y, z: center of box
-        h, w, l: box size
-        ry: yaw rotation around Y-axis
-    Returns:
-        corners_3d: (8, 3) array of box corners
-    """
-    # 定义局部坐标下的8个角点
-    x_corners = [l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2]
-    y_corners = [0, 0, 0, 0, -h, -h, -h, -h]
-    z_corners = [w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2]
 
-    corners = np.vstack([x_corners, y_corners, z_corners])  # (3, 8)
-
-    # 绕Y轴旋转
-    R = np.array([
-        [np.cos(ry), 0, np.sin(ry)],
-        [0, 1, 0],
-        [-np.sin(ry), 0, np.cos(ry)]
-    ])
-
-    corners_3d = (R @ corners).T
-    corners_3d += np.array([x, y, z])
-    return corners_3d
-
-
-def points_in_3d_box(box_corners, points):
-    """
-    精确判断点是否在3D包围盒内 (NuScenes-style)
-    Args:
-        box_corners: (8,3) box corner coordinates
-        points: (N,3)
-    Returns:
-        mask: (N,) bool
-    """
-    # 假设角点顺序如下:
-    # 0–3: bottom, 4–7: top
-    p1 = box_corners[0]
-    p2 = box_corners[1]
-    p4 = box_corners[3]
-    p5 = box_corners[4]
-
-    # 三个边向量
-    i = p2 - p1  # x方向
-    j = p4 - p1  # y方向
-    k = p5 - p1  # z方向
-
-    v = points - p1.reshape(1, 3)
-
-    iv = np.dot(v, i)
-    jv = np.dot(v, j)
-    kv = np.dot(v, k)
-
-    mask_x = np.logical_and(0 <= iv, iv <= np.dot(i, i))
-    mask_y = np.logical_and(0 <= jv, jv <= np.dot(j, j))
-    mask_z = np.logical_and(0 <= kv, kv <= np.dot(k, k))
-
-    mask = np.logical_and.reduce((mask_x, mask_y, mask_z))
-    return mask
-
-
-# ===================== 主数据集类 ===================== #
 class KITTI_TripletDataset(Dataset):
     def __init__(self, root_dir, split='training', min_points=5):
-        """
-        Args:
-            root_dir: KITTI dataset root (包含 training/testing)
-            split: 'training' or 'testing'
-            min_points: 最少点云数量阈值
-        """
         self.root_dir = os.path.join(root_dir, split)
         self.image_dir = os.path.join(self.root_dir, 'image_2')
         self.velo_dir = os.path.join(self.root_dir, 'velodyne')
@@ -103,21 +30,17 @@ class KITTI_TripletDataset(Dataset):
         label_path = os.path.join(self.label_dir, f"{idx_str}.txt")
         calib_path = os.path.join(self.root_dir, "calib", f"{idx_str}.txt")
 
-        # 读取图像
+        # Read Image
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # 读取点云
+        # Read Point Cloud
         lidar = np.fromfile(lidar_path, dtype=np.float32).reshape(-1, 4)
         _, lidar_non_ground = segment_ground_o3d(lidar)
-
-        # 读取标签
+        # Read Labels
         labels = self.read_labels(label_path)
-
-        # 读取标定矩阵
+        # Read Calibration Matrix
         Tr_velo_to_cam, R0_rect = load_calib(calib_path)
-
-        # 生成 triplets（传入 calib 参数）
+        # Generate triplets (passing calibration parameters)
         til_triplet, all_bboxes = self.prepare_triplet(image, lidar_non_ground, labels, Tr_velo_to_cam, R0_rect)
 
         return {
@@ -125,9 +48,8 @@ class KITTI_TripletDataset(Dataset):
             "all_bboxes": all_bboxes
         }
 
-
     def read_labels(self, path):
-        """读取 KITTI label_2 文件"""
+        """Read KITTI label_2 file"""
         labels = []
         with open(path, 'r') as f:
             for line in f.readlines():
@@ -153,7 +75,7 @@ class KITTI_TripletDataset(Dataset):
         image_pil = Image.fromarray(image)
 
         for ann in labels:
-            # 坐标转换
+            # Coordinate Transformation
             x, y, z, h, w, l, ry = camera_box_to_lidar(
                 ann["x"], ann["y"], ann["z"], ann["h"], ann["w"], ann["l"], ann["ry"],
                 Tr_velo_to_cam, R0_rect
@@ -274,15 +196,15 @@ class Triplet_Object_KITTI(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         
-        # Text Logic
+        # Text
         label = self.prompt + item["label"]
         caption = item.get("caption", "")
 
-        # Image Logic
+        # Image
         img = self._load_resource(item["image_path"], self.image_tar, self.image_members)
         img = self.image_transform(img)
 
-        # LiDAR Logic
+        # LiDAR
         if "lidar_path" in item:
             lidar_np = self._load_resource(item["lidar_path"], self.lidar_tar, self.lidar_members, is_numpy=True)
             lidar_data = torch.from_numpy(lidar_np).float()
@@ -304,43 +226,3 @@ class Triplet_Object_KITTI(Dataset):
             self.image_tar.close()
         if hasattr(self, 'lidar_tar') and self.lidar_tar:
             self.lidar_tar.close()
-            
-def load_calib(calib_path):
-    """Reads KITTI calib.txt and returns transformation matrices."""
-    calib = {}
-    with open(calib_path, "r") as f:
-        for line in f.readlines():
-            if ":" not in line: continue
-            key, value = line.split(":", 1)
-            calib[key] = np.array([float(x) for x in value.split()])
-    
-    # Construct matrices
-    # Tr_velo_to_cam: 3x4 matrix transforming Velodyne to Camera coordinates
-    Tr_velo_to_cam = calib.get("Tr_velo_to_cam", np.eye(12)[:12]).reshape(3, 4)
-    # R0_rect: 3x3 rectifying rotation matrix
-    R0_rect = calib.get("R0_rect", np.eye(9)).reshape(3, 3)
-    return Tr_velo_to_cam, R0_rect
-
-def camera_box_to_lidar(x, y, z, h, w, l, ry, Tr_velo_to_cam, R0_rect):
-    """
-    Converts KITTI 3D bounding box from Camera coordinates to LiDAR coordinates.
-    """
-    # 1. Box center in Camera homogeneous coordinates
-    cam_center = np.array([x, y, z, 1.0])
-    
-    # 2. Construct 4x4 transformation matrices
-    Tr = np.eye(4)
-    Tr[:3, :4] = Tr_velo_to_cam
-    R0 = np.eye(4)
-    R0[:3, :3] = R0_rect
-    
-    # 3. Compute Camera-to-LiDAR transformation (Inverse of LiDAR-to-Camera)
-    T_cam2lidar = np.linalg.inv(R0 @ Tr)
-    
-    # 4. Transform center coordinates
-    lidar_center = (T_cam2lidar @ cam_center)[:3]
-    
-    # 5. Flip yaw direction (KITTI camera yaw is around Y-axis, LiDAR yaw is around Z-axis)
-    yaw_lidar = -ry - np.pi / 2
-    
-    return lidar_center[0], lidar_center[1], lidar_center[2], h, w, l, yaw_lidar

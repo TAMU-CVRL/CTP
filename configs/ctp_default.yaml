@@ -32,8 +32,8 @@ Train:
 
 Eval:
   # eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
-  device: "cuda"
   # loss_fn: "r2_similarity_loss" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
   # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
+  device: "cuda"
   batch_size: 256
   checkpoint_path: checkpoints/ckpt_epoch9.pt

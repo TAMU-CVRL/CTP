@@ -7,17 +7,17 @@ from sklearn.neighbors import NearestNeighbors
 import math
 
 def segment_ground_o3d(points, dist_thresh=0.15, ransac_n=3, num_iterations=1000):
-    # --- Convert to numpy ---
+    # Convert to numpy
     if isinstance(points, torch.Tensor):
         points = points.detach().cpu().numpy()
     if points.shape[1] > 3:
         points = points[:, :3]
 
-    # --- Convert to open3d point cloud ---
+    # Convert to open3d point cloud
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
 
-    # --- RANSAC ---
+    # RANSAC
     plane_model, inliers = pcd.segment_plane(distance_threshold=dist_thresh,
                                              ransac_n=ransac_n,
                                              num_iterations=num_iterations)
@@ -31,7 +31,7 @@ def segment_ground_o3d(points, dist_thresh=0.15, ransac_n=3, num_iterations=1000
     return ground_points, non_ground_points
 
 def lidar2camera_fov(nusc, points_lidar, token, camera_name):
-    # ---- Get sample and sensors ----
+    # Get sample and sensors
     points_lidar = points_lidar[:, :3] # [N, 3]
     sample_record = nusc.get('sample', token)
     lidar_token = nusc.get('sample_data', sample_record['data']['LIDAR_TOP'])
@@ -40,13 +40,13 @@ def lidar2camera_fov(nusc, points_lidar, token, camera_name):
     lidar_calib = nusc.get('calibrated_sensor', lidar_token['calibrated_sensor_token'])
     cam_calib = nusc.get('calibrated_sensor', cam_token['calibrated_sensor_token'])
 
-    # ---- LiDAR -> Ego ----
+    # LiDAR -> Ego
     q_l2e = Quaternion(lidar_calib['rotation'])
     R_l2e = torch.tensor(q_l2e.rotation_matrix, dtype=torch.float32)
     t_l2e = torch.tensor(lidar_calib['translation'], dtype=torch.float32).view(3, 1)
     points_ego = R_l2e @ points_lidar.T + t_l2e  # [3, N]
 
-    # ---- Ego -> Camera ----
+    # Ego -> Camera
     q_e2c = Quaternion(cam_calib['rotation'])
     R_e2c = torch.tensor(q_e2c.rotation_matrix, dtype=torch.float32)
     t_e2c = torch.tensor(cam_calib['translation'], dtype=torch.float32).view(3, 1)

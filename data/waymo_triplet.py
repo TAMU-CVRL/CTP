@@ -1,4 +1,3 @@
-import os
 import json
 import tarfile
 import io
@@ -105,15 +104,15 @@ class Triplet_Object_Waymo(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         
-        # Text Logic
+        # Text
         label = self.prompt + item["label"]
         caption = item.get("caption", "")
 
-        # Image Logic
+        # Image
         img = self._load_resource(item["image_path"], self.image_tar, self.image_members)
         img = self.image_transform(img)
 
-        # LiDAR Logic
+        # LiDAR
         if "lidar_path" in item:
             lidar_np = self._load_resource(item["lidar_path"], self.lidar_tar, self.lidar_members, is_numpy=True)
             lidar_data = torch.from_numpy(lidar_np).float()

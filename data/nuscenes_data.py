@@ -1,6 +1,7 @@
 # Reference: https://github.com/E2E-AD/AD-MLP/blob/main/deps/stp3/stp3/datas/NuscenesData.py
-
+import os
 import numpy as np
+from PIL import Image
 
 from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import LidarPointCloud
@@ -13,8 +14,7 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-from PIL import Image
-import os
+from utils.pc_utils import farthest_point_sampling
 
 class NuscenesData(Dataset):
     def __init__(self, nusc, is_train, pre_frames, future_frames):
@@ -228,23 +228,3 @@ class NuscenesData(Dataset):
         velocity = torch.norm(velocity_vector)
 
         return velocity, accel, yaw_rate
-
-def farthest_point_sampling(points, npoint):
-    N, C = points.shape
-    device = points.device
-
-    centroids = torch.zeros(npoint, dtype=torch.long, device=device)
-    distance = torch.ones(N, device=device) * 1e10
-    farthest = torch.randint(0, N, (1,), dtype=torch.long, device=device)[0]
-
-    xyz = points[:, :3]
-    
-    for i in range(npoint):
-        centroids[i] = farthest
-        centroid_xyz = xyz[farthest].view(1, 3)
-        dist = torch.sum((xyz - centroid_xyz) ** 2, dim=1)
-        distance = torch.min(distance, dist)
-        farthest = torch.max(distance, dim=0)[1]
-
-    sampled_points = points[centroids]  # [npoint, C]
-    return sampled_points

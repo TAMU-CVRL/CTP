@@ -25,3 +25,5 @@ expired/
 tb_logs/
 wandb/
 dataset/
+checkpoints/
+results/
