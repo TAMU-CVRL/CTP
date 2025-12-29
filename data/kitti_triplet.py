@@ -175,69 +175,6 @@ class KITTI_TripletDataset(Dataset):
 
         return til_triplet, all_bboxes
 
-    
-# class Triplet_Object_KITTI(Dataset):
-#     def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, image_tar_path=None, prompt="A "):
-#         self.data = []
-#         with open(jsonl_file, "r") as f:
-#             for line in f:
-#                 self.data.append(json.loads(line))
-
-#         self.image_transform = image_transform
-#         self.sparse_to_dense_fn = sparse_to_dense_fn
-#         self.prompt = prompt
-#         self.image_tar_path = image_tar_path
-
-#         if self.image_tar_path is not None:
-#             self.tar = tarfile.open(image_tar_path, "r")
-#             self.members = {}
-#             for m in self.tar.getmembers():
-#                 rel_path = m.name
-#                 if rel_path.startswith("data/kitti_images/"):
-#                     rel_path = rel_path[len("data/kitti_images/"):]
-#                 self.members[rel_path] = m
-#             print(f"[INFO] Images will be loaded from TAR archive: {image_tar_path}")
-#         else:
-#             print(f"[INFO] Images will be loaded from disk directly.")
-
-#     def __len__(self):
-#         return len(self.data)
-
-#     def __getitem__(self, idx):
-#         item = self.data[idx]
-
-#         # Text processing
-#         label = self.prompt + item["label"]
-#         caption = item.get("caption", "")
-
-#         # Image processing
-#         if self.image_tar_path is None: # Load image from disk directlyimage
-#             img = Image.open(item["image_path"]).convert("RGB")
-#         else:  # Load image from tar instead of disk
-#             img_rel_path = item["image_path"]
-#             if img_rel_path.startswith("data/kitti_images/"):
-#                 img_rel_path = img_rel_path[len("data/kitti_images/"):]
-
-#             if img_rel_path not in self.members:
-#                 raise FileNotFoundError(f"{img_rel_path} not found in TAR archive")
-
-#             img_member = self.members[img_rel_path]
-#             img_file = self.tar.extractfile(img_member)
-#             img = Image.open(io.BytesIO(img_file.read())).convert("RGB")
-
-#         img = self.image_transform(img)
-
-#         # Lidar processing
-#         lidar = torch.tensor(item["lidar"], dtype=torch.float32)
-#         lidar = self.sparse_to_dense_fn(lidar)
-
-#         return {
-#             "label": label,
-#             "caption": caption,
-#             "image": img,
-#             "lidar": lidar
-#         }
-
 class Triplet_Object_KITTI(Dataset):
     def __init__(self, jsonl_file, image_transform, sparse_to_dense_fn, prompt=""):
         # 1. Automatic Path Inference
@@ -367,20 +304,7 @@ class Triplet_Object_KITTI(Dataset):
             self.image_tar.close()
         if hasattr(self, 'lidar_tar') and self.lidar_tar:
             self.lidar_tar.close()
-
-# def load_calib(calib_path):
-#     """读取 KITTI calib.txt"""
-#     calib = {}
-#     with open(calib_path, "r") as f:
-#         for line in f.readlines():
-#             if ":" not in line:
-#                 continue
-#             key, value = line.split(":", 1)
-#             calib[key] = np.array([float(x) for x in value.split()])
-#     # 构建矩阵
-#     Tr_velo_to_cam = calib.get("Tr_velo_to_cam", np.eye(12)).reshape(3, 4)
-#     R0_rect = calib.get("R0_rect", np.eye(9)).reshape(3, 3)
-#     return Tr_velo_to_cam, R0_rect
+            
 def load_calib(calib_path):
     """Reads KITTI calib.txt and returns transformation matrices."""
     calib = {}
