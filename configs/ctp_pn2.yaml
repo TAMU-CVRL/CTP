@@ -1,0 +1,39 @@
+Name: "ctp_pn2"
+
+Model:
+  clip_model: "ViT-B/32"
+  point_model: "PointNet2"
+  loss_fn: "l2_similarity_loss_completed"
+  alpha: Null
+  pc_only: False
+
+Dataset:
+  prompt: "This is a "
+  sparse_method: "zero_pad"
+  train_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl"
+  detailed_caption: True
+
+Train:
+  batch_size: 64 # 128 ~ 25.7GB
+  epochs: 10
+  learning_rate: 0.0005 # 5e-4
+  weight_decay: 0.2
+  warmup_ratio: 0.1 # 10%
+  accumulation_steps: 1
+  optimizer: "AdamW"
+  scheduler:
+    type: "constant"
+    num_cycles: Null
+
+  use_tb: True
+  use_wandb: True
+  wandb_mode: "online" # online, offline
+  checkpoint_path: Null
+
+Eval:
+  # eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
+  # loss_fn: "r2_similarity_loss" # r2_similarity_loss, cosine_matrix_loss_eval, abs_cosine_matrix_loss_eval
+  # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
+  device: "cuda"
+  batch_size: 256
+  checkpoint_path: Null

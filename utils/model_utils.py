@@ -3,7 +3,8 @@ import yaml
 import torch
 import torch.nn as nn
 from models.clip.model import CLIP
-from models.pointnet2 import pointnet2_encoder
+from models.pointnet2.pointnet2_encoder import PointNet2Encoder
+from models.PTv3.ptv3_encoder import PTv3Encoder
 from tqdm import tqdm
 
 from transformers import (
@@ -96,8 +97,6 @@ def get_clip_encoders(name: str):
 def prepare_training():
     if not os.path.exists("checkpoints"):
         os.makedirs("checkpoints", exist_ok=True) # save model checkpoints
-    if not os.path.exists("runs"):
-        os.makedirs("runs", exist_ok=True) # for TensorBoard logs
 
 def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
@@ -177,7 +176,11 @@ def gather_features(text_features, image_features, lidar_features, local_loss=Fa
 
 def pc_backbone(pc_encoder, device):
     if pc_encoder == "pointnet2":
-        pc_encoder = pointnet2_encoder.PointNet2Encoder().to(device)
+        # [B, C, N] -> [B, 1024]
+        pc_encoder = PointNet2Encoder().to(device)
+    elif pc_encoder == "ptv3":
+        # [B, C, N] -> [B, 1024]
+        pc_encoder = PTv3Encoder().to(device)
     else:
         raise ValueError(f"Unknown lidar encoder: {pc_encoder}")
     return pc_encoder

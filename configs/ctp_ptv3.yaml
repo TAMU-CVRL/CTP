@@ -1,8 +1,8 @@
-Name: "ctp_default"
+Name: "ctp_ptv3"
 
 Model:
   clip_model: "ViT-B/32"
-  point_model: "PointNet2"
+  point_model: "ptv3"
   loss_fn: "l2_similarity_loss_completed"
   alpha: Null
   pc_only: False
@@ -36,4 +36,4 @@ Eval:
   # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
   device: "cuda"
   batch_size: 256
-  checkpoint_path: checkpoints/ckpt_epoch9.pt
+  checkpoint_path: Null

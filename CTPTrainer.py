@@ -15,7 +15,6 @@ from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from models.ctp import ctp
-from models.pointnet2 import pointnet2_encoder
 from data.nuscenes_triplet import Triplet_Object_Nuscenes
 from utils.img_utils import image_transform
 from utils.pc_utils import load_sparse_method
