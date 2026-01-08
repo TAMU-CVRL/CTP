@@ -16,6 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models.ctp import ctp
 from data.nuscenes_triplet import Triplet_Object_Nuscenes
+from data.kitti_triplet import Triplet_Object_KITTI
+from data.waymo_triplet import Triplet_Object_Waymo
 from utils.img_utils import image_transform
 from utils.pc_utils import load_sparse_method
 from utils.model_utils import get_clip_encoders, prepare_training, load_config, build_scheduler, gather_features, pc_backbone
@@ -28,8 +30,8 @@ class CTPTrainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         self._init_distributed()
-        self.train_dataloader = self._build_dataloader(is_train=True)
-        self.val_dataloader = self._build_dataloader(is_train=False)
+        self.train_dataloader = self._build_dataloader(is_train=True) # nuscenes triplet training set
+        self.val_dataloader = self._build_dataloader(is_train=False) # nuscenes triplet val set
         self._setup_eval_metrics()
         self.model = self._build_model()
         self.optimizer, self.scheduler = self._build_optimizer_and_scheduler()
@@ -38,7 +40,7 @@ class CTPTrainer:
         self.start_epoch = 0
         self._load_checkpoint_if_exists()
         self._init_logging()
-
+        
     def _init_distributed(self):
         if "LOCAL_RANK" in os.environ:
             local_rank = int(os.environ["LOCAL_RANK"])
@@ -53,7 +55,6 @@ class CTPTrainer:
             print(f"[Single-GPU] Training on {self.device}")
 
     def _build_dataloader(self, is_train=True):
-        # TODO: can load evaluation dataset as well
         sparse_method = self.cfg["Dataset"]["sparse_method"]
         sparse_to_dense = load_sparse_method(sparse_method)
         
@@ -90,70 +91,131 @@ class CTPTrainer:
         )
 
     def _setup_eval_metrics(self):
-        self.classes = [
-            'car', 'truck', 'bus', 'pedestrian', 'bicycle', 
-            'trailer', 'construction', 'motorcycle', 'barrier', 'trafficcone'
-        ]
+        self.dataset_classes = {
+                "nuscenes": ['car', 'truck', 'bus', 'pedestrian', 'bicycle', 
+                            'trailer', 'construction', 'motorcycle', 'barrier', 'trafficcone'],
+                "kitti": ['car', 'van', 'truck', 'pedestrian'],
+                "waymo": ['car', 'pedestrian', 'sign'] 
+            }
+        self.label_maps = {
+                "kitti": {
+                    'Car': 'car', 'Van': 'van', 'Truck': 'truck',
+                    'Pedestrian': 'pedestrian', 'Person_sitting': 'pedestrian',
+                    'Cyclist': 'pedestrian'
+                },
+                "waymo": {
+                    'Vehicle': 'car', 'Pedestrian': 'pedestrian',
+                    'Cyclist': 'pedestrian', 'Sign': 'sign'
+                },
+                "nuscenes": {c: c for c in self.dataset_classes["nuscenes"]}
+            }
         self.prompt_template = self.cfg["Dataset"].get("prompt", "This is a ")
-        self.all_prompts = [f"{self.prompt_template}{cls}" for cls in self.classes]
-        self.class_tokens = clip.tokenize(self.all_prompts, truncate=True).to(self.device)
 
-    def _eval_nuscenes(self, epoch):
-        self.model.eval()
-        confusion_matrix = torch.zeros(len(self.all_prompts), len(self.all_prompts)).to(self.device)
+        self.eval_loaders = {}
+        self.eval_loaders["nuscenes"] = self.val_dataloader
+
+        for ds in ["kitti", "waymo"]:
+            path = self.cfg["Dataset"].get(f"val_data_path_{ds}")
+            if path:
+                self.eval_loaders[ds] = self._build_custom_dataloader(ds, path)
+
+    def _build_custom_dataloader(self, ds_type, path):
+        sparse_method = self.cfg["Dataset"]["sparse_method"]
+        sparse_to_dense = load_sparse_method(sparse_method)
         
-        val_loader = self.val_dataloader
-        pbar = tqdm(val_loader, desc=f"Validating Epoch {epoch}") if self.rank == 0 else val_loader
+        args = {
+            "jsonl_file": path,
+            "image_transform": image_transform,
+            "sparse_to_dense_fn": sparse_to_dense,
+            "prompt": self.prompt_template
+        }
+        
+        dataset = Triplet_Object_KITTI(**args) if ds_type == "kitti" else Triplet_Object_Waymo(**args)
+        sampler = DistributedSampler(dataset, shuffle=False) if self.world_size > 1 else None
+        return DataLoader(dataset, batch_size=self.cfg["Train"]["batch_size"], 
+                        sampler=sampler, num_workers=self.cfg["Train"].get("num_workers", 0))
 
-        with torch.no_grad():
-            for sample in pbar:
-                raw_labels = sample["label"] 
-                imgs = sample["image"].to(self.device)
-                points = sample["lidar"].permute(0, 2, 1).to(self.device)
+    def _evaluate_all_datasets(self, epoch):
+        self.model.eval()
+        results = {}
 
-                text_feats, img_feats, pc_feats = self.model(self.class_tokens, imgs, points)
-                
-                core_model = self.model.module if self.world_size > 1 else self.model
-                _, sim = core_model.get_loss(text_feats, img_feats, pc_feats)
-                preds = torch.argmax(sim, dim=1) # [Batch_size]
-
-                for pred_idx, label in zip(preds, raw_labels):
-                    clean_name = label.replace(self.prompt_template, "").strip()
-                    if clean_name in self.classes:
-                        gt_idx = self.classes.index(clean_name)
-                        confusion_matrix[gt_idx, pred_idx] += 1
-
-        if self.world_size > 1:
-            dist.all_reduce(confusion_matrix, op=dist.ReduceOp.SUM)
-
-        if self.rank == 0:
-            total_hit = torch.trace(confusion_matrix).item()
-            total_num = confusion_matrix.sum().item()
-            overall_acc = (total_hit / total_num * 100) if total_num > 0 else 0
+        for ds_name, loader in self.eval_loaders.items():
+            classes = self.dataset_classes.get(ds_name, self.dataset_classes["nuscenes"])
+            prompts = [f"{self.prompt_template}{c}" for c in classes]
+            class_tokens = clip.tokenize(prompts, truncate=True).to(self.device)
             
-            if self.use_tb and self.writer:
-                self.writer.add_scalar("Acc/val_overall", overall_acc, epoch)
-            if self.use_wandb:
-                wandb.log({"Acc/val_overall": overall_acc, "Epoch": epoch}, step=self.step)
+            confusion_matrix = torch.zeros(len(prompts), len(prompts)).to(self.device)
+            val_loss = 0.0
+            total_steps = 0
+
+            pbar = tqdm(loader, desc=f"Eval {ds_name} Epoch {epoch}") if self.rank == 0 else loader
+
+            with torch.no_grad():
+                for sample in pbar:
+                    imgs = sample["image"].to(self.device)
+                    points = sample["lidar"].permute(0, 2, 1).to(self.device)
+                    raw_labels = sample["label"]
+
+                    batch_texts = sample.get("caption", raw_labels)
+                    batch_tokens = clip.tokenize(batch_texts, truncate=True).to(self.device)
+
+                    # Forward
+                    t_f, i_f, l_f = self.model(batch_tokens, imgs, points)
+
+                    t_f_g, i_f_g, l_f_g = gather_features(
+                        t_f, i_f, l_f, 
+                        gather_with_grad=False, 
+                        world_size=self.world_size
+                    )
+
+                    core_model = self.model.module if self.world_size > 1 else self.model
+                    loss, _ = core_model.get_loss(t_f_g, i_f_g, l_f_g)
+                    val_loss += loss.item()
+                    total_steps += 1
+
+                    t_f_classes, _, _ = self.model(class_tokens, imgs, points)
+                    _, sim = core_model.get_loss(t_f_classes, i_f, l_f)
+                    preds = torch.argmax(sim, dim=1)
+
+                    for pred_idx, label in zip(preds, raw_labels):
+                        clean_name = label.replace(self.prompt_template, "").strip()
+                        ds_map = self.label_maps.get(ds_name, {})
+                        mapped_name = ds_map.get(clean_name, None)
+                        if mapped_name and mapped_name in classes:
+                            gt_idx = classes.index(mapped_name)
+                            confusion_matrix[gt_idx, pred_idx] += 1
+
+            if self.world_size > 1:
+                dist.all_reduce(confusion_matrix, op=dist.ReduceOp.SUM)
+                val_loss_tensor = torch.tensor([val_loss], device=self.device)
+                dist.all_reduce(val_loss_tensor, op=dist.ReduceOp.SUM)
+                val_loss = val_loss_tensor.item() / self.world_size
+
+            if self.rank == 0:
+                avg_loss = val_loss / max(total_steps, 1)
+                total_hit = torch.trace(confusion_matrix).item()
+                total_num = confusion_matrix.sum().item()
+                acc = (total_hit / total_num * 100) if total_num > 0 else 0
                 
-            print(f"[*] Epoch {epoch} Val Accuracy: {overall_acc:.2f}%")
-            return overall_acc
-        return None
+                self._log_eval_metrics(ds_name, acc, avg_loss, epoch)
+                results[ds_name] = acc
 
-    ###################################################
-    # TODO: implement other eval functions if needed
-    def _eval_kitti(self, epoch):
-        pass  # Placeholder for KITTI evaluation logic
+        return results
 
-    def _eval_waymo(self, epoch):
-        pass  # Placeholder for Waymo evaluation logic
-
-    def _eval_all(self, epoch):
-        pass  # Placeholder for combined evaluation logic
-
-    def _eval_loss(self, epoch):
-        pass  # Placeholder for loss evaluation logic
-    ###################################################
+    def _log_eval_metrics(self, ds_name, acc, loss, epoch):
+        metrics = {
+            f"Acc/val_{ds_name}": acc,
+            f"Loss/val_{ds_name}": loss,
+            "Epoch": epoch
+        }
+        if self.use_wandb:
+            wandb.log(metrics, step=self.step)
+        if self.use_tb and self.writer:
+            self.writer.add_scalar(f"Acc/val_{ds_name}", acc, epoch)
+            self.writer.add_scalar(f"Loss/val_{ds_name}", loss, epoch)
+        
+        print(f"[*] {ds_name.upper()} | Epoch {epoch} | Acc: {acc:.2f}% | Loss: {loss:.4f}")
+    #########################
 
     def _build_model(self):
         pc_only = self.cfg["Model"]["pc_only"]
@@ -333,7 +395,7 @@ class CTPTrainer:
 
             # save checkpoint
             if self.world_size > 1: dist.barrier()
-            self._eval_nuscenes(epoch) # validate at the end of each epoch
+            self._evaluate_all_datasets(epoch) # validate at the end of each epoch
             if self.rank == 0:
                 avg_loss = running_loss / max(updates_in_epoch, 1)
                 if self.use_tb and self.writer:

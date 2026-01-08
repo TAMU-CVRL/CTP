@@ -1,4 +1,4 @@
-Name: "ctp192_pn2"
+Name: "ctp128_pn2"
 
 Model:
   clip_model: "ViT-B/32"
@@ -12,11 +12,13 @@ Dataset:
   sparse_method: "zero_pad"
   train_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl"
   val_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl"
+  val_data_path_kitti: "dataset/kitti_triplets/kitti_triplet_train.jsonl"
+  val_data_path_waymo: "dataset/waymo_triplets/waymo_triplet_val.jsonl"
   detailed_caption: True
 
 Train:
-  batch_size: 192 # 128 ~ 25.7GB
-  epochs: 50
+  batch_size: 128 # 128 ~ 25.7GB
+  epochs: 20
   learning_rate: 0.0005 # 5e-4
   weight_decay: 0.2
   warmup_ratio: 0.1 # 10%
