@@ -10,6 +10,7 @@ from nuscenes.utils.data_classes import Box
 from nuscenes.utils.geometry_utils import points_in_box
 from pyquaternion import Quaternion
 from utils.img_utils import crop_annotation
+from utils.pc_utils import lidar2camera_fov, segment_ground_o3d, zero_pad, load_lidar_bin
 
 class Nuscenes_TripletDataset(Dataset):
     def __init__(self, base_dataset):
@@ -206,3 +207,47 @@ class Triplet_Object_Nuscenes(Dataset):
             self.image_tar.close()
         if hasattr(self, 'lidar_tar') and self.lidar_tar:
             self.lidar_tar.close()
+
+class Triplet_Scene_Nuscenes(Dataset):
+    def __init__(self, jsonl_file, nusc, image_transform, sparse_to_dense_fn):
+        self.data = []
+        with open(jsonl_file, "r") as f:
+            for line in f:
+                self.data.append(json.loads(line))
+
+        self.nusc = nusc  
+        self.image_transform = image_transform
+        self.sparse_to_dense_fn = sparse_to_dense_fn
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        
+        # Load data
+        token = item["sample_token"]
+        caption = item.get("caption", "")
+        camera_name = item["camera_name"]
+        image_path = item["image_path"]
+        lidar_path = item["lidar_path"]
+
+        # Image processing
+        img = Image.open(image_path).convert("RGB")
+        img = self.image_transform(img)
+
+        # Lidar processing
+        lidar_scene = load_lidar_bin(lidar_path) # raw lidar
+        lidar = zero_pad(lidar_scene, 35000) # [35000, 3]
+        _, lidar_scene_non_ground = segment_ground_o3d(lidar_scene) # lidar without ground
+        visible_points, _ = lidar2camera_fov(self.nusc, lidar_scene_non_ground, token, camera_name) # camera fov
+        visible_points = self.sparse_to_dense_fn(visible_points) # [6000, 3]
+
+        return {
+            "token": token,
+            "camera_name": camera_name,
+            "caption": caption,
+            "image": img,
+            "lidar": lidar,
+            "visible_points": visible_points
+        }

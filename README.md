@@ -73,6 +73,8 @@ pip install transformers
 pip install matplotlib
 
 pip install nuscenes-devkit
+
+pip install umap-learn
 ```
 
 PTv3

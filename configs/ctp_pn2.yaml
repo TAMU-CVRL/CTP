@@ -15,7 +15,7 @@ Dataset:
 
 Train:
   batch_size: 64 # 128 ~ 25.7GB
-  epochs: 10
+  epochs: 20
   learning_rate: 0.0005 # 5e-4
   weight_decay: 0.2
   warmup_ratio: 0.1 # 10%
@@ -28,7 +28,7 @@ Train:
   use_tb: True
   use_wandb: True
   wandb_mode: "online" # online, offline
-  checkpoint_path: Null
+  checkpoint_path: "checkpoints/ctp_pn2/ckpt_9.pt"
 
 Eval:
   # eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
@@ -36,4 +36,4 @@ Eval:
   # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
   device: "cuda"
   batch_size: 256
-  checkpoint_path: Null
+  checkpoint_path: "checkpoints/ctp_pn2/ckpt_9.pt"

@@ -1,9 +1,9 @@
-Name: "ctp_ptv3"
+Name: "ctp64_ptv3_cm"
 
 Model:
   clip_model: "ViT-B/32"
   point_model: "ptv3"
-  loss_fn: "l2_similarity_loss_completed"
+  loss_fn: "TIL_cosine_matrix_loss"
   alpha: Null
   pc_only: False
 
@@ -15,7 +15,7 @@ Dataset:
 
 Train:
   batch_size: 64 # 128 ~ 25.7GB
-  epochs: 20
+  epochs: 10
   learning_rate: 0.0005 # 5e-4
   weight_decay: 0.2
   warmup_ratio: 0.1 # 10%
@@ -28,7 +28,7 @@ Train:
   use_tb: True
   use_wandb: True
   wandb_mode: "online" # online, offline
-  checkpoint_path: "checkpoints/ctp_ptv3/ckpt_9.pt"
+  checkpoint_path: Null
 
 Eval:
   # eval_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl" # data/nuscenes_triplet_val.jsonl, data/kitti_triplet_train.jsonl
@@ -36,4 +36,4 @@ Eval:
   # alpha: 0  # 0.5: image and lidar, 0: lidar only, 1: image only
   device: "cuda"
   batch_size: 256
-  checkpoint_path: "checkpoints/ctp_ptv3/ckpt_9.pt"
+  checkpoint_path: Null
