@@ -1,102 +1,152 @@
-# Contrastive Tensor Pre-training (CTP)
+# Toward Unified Multimodal Representation Learning for Autonomous Driving
+Overview of Contrastive Tensor Pre-training (CTP). We propose this framework that simultaneously aligns
+multiple modalities in a similarity tensor.
 
-## NuScenes
+![pipeline](./figures/pipeline.jpg)
+<!-- <img src="./figures/pipeline.jpg" alt="overview" width="1000" align="center" /> -->
+
+## Requirements
+We can create a [conda](https://docs.conda.io/en/latest/) environment named `ctp`:
+``` bash
+conda create -n ctp python=3.9
 ```
-python3 ./TripletBuilder.py --dataset nuscenes --data_path /home/ximeng/Dataset/nuscenes_full_v1_0/ --split train
+Then activate the environment and install required libraries:
+``` bash
+conda activate ctp
+```
+Install [PyTorch](https://pytorch.org/get-started/locally/) based on your GPU:
+``` bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+```
+Install other libraries:
+``` bash
+pip install tensorboard wandb transformers matplotlib nuscenes-devkit umap-learn pyyaml typeguard git+https://github.com/openai/CLIP.git
 ```
 
-## KITTI
-```py
-python3 ./TripletBuilder.py --dataset kitti --data_path /home/ximeng/Dataset/kitti/
+## Triplet Data Preparation
+Triplet data preparation can be divided into two steps. First, we extract annotations, cropped images, and the corresponding point clouds. Then, the images and annotations are fed into a VLM ([Qwen3-VL-8B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct)) to generate pseudo captions.
+
+### Dataset Structure
+```text
+dataset/
+├── nuscenes_triplets/
+│   ├── nuscenes_image/
+│   ├── nuscenes_lidar/
+│   ├── nuscenes_triplet_train.jsonl
+│   └── nuscenes_triplet_val.jsonl
+├── kitti_triplets/
+│   ├── kitti_image/
+│   ├── kitti_lidar/
+│   └── kitti_triplet_train.jsonl
+└── waymo_triplets/
+    ├── waymo_image/
+    ├── waymo_lidar/
+    └── waymo_triplet_val.jsonl
+```
+### Metadata Format
+Each line in the `.jsonl` file represents a single triplet sample. For example:
+```json
+{
+  "label": "trafficcone",
+  "image_path": "nuscenes_image/val/val_0_0_trafficcone.png",
+  "lidar_path": "nuscenes_lidar/val/val_0_0_trafficcone.npy",
+  "bbox": [0.966, -5.245, 0.659, 0.291, 0.302, 1.265, 1.551],
+  "caption": "The traffic cone is orange with a white reflective band near the top, has a conical geometry tapering to a point, and features a black and yellow reflective strip near its base."
+}
 ```
 
-## Waymo
-```py
-python3 ./TripletBuilder_waymo.py --data_path /home/ximeng/Dataset/waymo_open_dataset_v_2_0_1/ --segment_filter {0..49}
+### Training Triplet Dataset
+``` bash
+python3 ./TripletBuilder.py --dataset nuscenes --data_path /PATH/TO/NUSCENES/DATASET --split train
 ```
 
-##
-```py
+```bash
 python3 ./CaptionGen.py --jsonl_path dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl
 ```
-```py
+### Test Triplet Dataset
+- NuScenes
+``` bash
+python3 ./TripletBuilder.py --dataset nuscenes --data_path /PATH/TO/NUSCENES/DATASET --split val
+```
+``` bash
 python3 ./CaptionGen.py --jsonl_path dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl
 ```
-```py
+- KITTI
+``` bash
+python3 ./TripletBuilder.py --dataset kitti --data_path /PATH/TO/KITTI/DATASET
+```
+``` bash
 python3 ./CaptionGen.py --jsonl_path dataset/kitti_triplets/kitti_triplet_train.jsonl
 ```
-```py
+- Waymo
+
+To generate the Waymo triplet dataset, first create a separate environment named `waymo`:
+``` bash
+conda create -n waymo python=3.9
+conda activate waymo
+```
+Install the required dependencies:
+``` bash
+pip install numpy pandas pyarrow pillow tqdm scipy open3d waymo-open-dataset-tf-2-12-0
+```
+Then generate the triplet data and pseudo captions:
+```  bash
+python3 ./TripletBuilder_waymo.py --data_path /PATH/TO/WMOD/DATASET --segment_filter {0..49}
+```
+``` bash
 python3 ./CaptionGen.py --jsonl_path dataset/waymo_triplets/waymo_triplet_val.jsonl
 ```
-
-## Train
-```py
-python3 ./train.py
-```
-
-## Eval
-```py
-python3 ./CTPEvaluator.py --config configs/ctp_default.yaml --eval_path dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl
-```
-
-```py
-python3 ./CTPEvaluator.py --config configs/ctp_default.yaml --eval_path dataset/kitti_triplets/kitti_triplet_train.jsonl
-```
-
-```py
-python3 ./CTPEvaluator.py --config configs/ctp_default.yaml --eval_path dataset/waymo_triplets/waymo_triplet_val.jsonl
-```
-
-```py
-python3 ./eval_align.py --config configs/ctp_default.yaml --eval_path dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl --after_ckpt checkpoints/ckpt_epoch9.pt --label truck
-```
-
-## Environment
-
-Base
-
-```
-conda create -n ctp python=3.9
-
+After finishing the data generation, you can switch back to the `ctp` environment:
+``` bash
 conda activate ctp
-
-pip install pyyaml typeguard
-
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-
-pip install git+https://github.com/openai/CLIP.git
-
-pip install tensorboard wandb
-
-pip install transformers
-
-pip install matplotlib
-
-pip install nuscenes-devkit
-
-pip install umap-learn
 ```
-
-PTv3
+## Training Models
+To train a model, simply provide a configuration file. The configuration files can be modified in the `./configs` folder.
+``` bash
+python3 ./train.py --config configs/default.yaml
 ```
-pip install timm
+Configuration Options:
+- **masked** (`True` / `False`): Whether to use the masking strategy.
+- **pc_only** (`True` / `False`): Whether to train only the point cloud encoder or all encoders.
+- **use_tb** (`True` / `False`): Whether to enable TensorBoard logging.
+- **use_wandb** (`True` / `False`): Whether to enable Weights & Biases logging. Run `wandb login` first to authenticate.
 
-pip install torch-scatter
+## Evaluation
+### Zero-shot Classification Accuracy
+To evaluate a trained model, first set **`checkpoint_path`** in the configuration file. Then choose an evaluation dataset from the following options:
 
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.8.0+cu126.html
+- `dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl`
+- `dataset/kitti_triplets/kitti_triplet_train.jsonl`
+- `dataset/waymo_triplets/waymo_triplet_val.jsonl`
 
-pip install spconv-cu126
+For example:
+
+```bash
+python3 ./eval_acc.py --config configs/default.yaml --eval_path dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl --tau 0.5
 ```
+The parameter **`tau`** controls modality usage during evaluation:
 
-Flash Attention
-```
-git clone https://github.com/Dao-AILab/flash-attention.git
-cd flash-attention
-python setup.py install
-```
+- **`tau = 0`**: Only the point cloud modality is used.
+- **`tau = 1`**: Only the image modality is used.
+- **`tau = 0.5`**: Both modalities are jointly evaluated.
+### Alignment
+To evaluate the alignment effect, high-dimensional features are projected onto a 2D plane to compare representations before and after alignment.
 
+Run the example command:
+``` bash
+python3 ./eval_align.py --config configs/default.yaml --eval_path dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl --after_ckpt PATH/TO/CHECKPOINT --label car
 ```
-python3 train.py --config configs/ctp_pn2.yaml
+Arugments:
+- **`--eval_path`**  
+  Supported evaluation datasets:
 
-python3 train.py --config configs/ctp_ptv3.yaml
-```
+  - `dataset/nuscenes_triplets/nuscenes_triplet_val.jsonl`
+  - `dataset/kitti_triplets/kitti_triplet_train.jsonl`
+  - `dataset/waymo_triplets/waymo_triplet_val.jsonl`
+
+- **`--after_ckpt`**: Path to the checkpoint file you want to evaluate.
+
+- **`--label`**: Object category used to visualize alignment effects. Supported labels include:
+  - `"car"`
+  - `"truck"`
+  - `"pedestrian"`

@@ -1,0 +1,39 @@
+Name: "ctp_cos_matrix"
+
+Model:
+  clip_model: "ViT-B/32"
+  point_model: "PointNet2"
+  loss_fn: "cosine_matrix_loss"
+  alpha: 0.333
+  beta: 0.333
+  gamma: 0.333
+  masked: True
+  pc_only: False
+
+Dataset:
+  prompt: "This is a "
+  sparse_method: "zero_pad"
+  train_data_path: "dataset/nuscenes_triplets/nuscenes_triplet_train.jsonl"
+  detailed_caption: True
+
+Train:
+  batch_size: 64
+  epochs: 10
+  learning_rate: 0.0005 # 5e-4
+  weight_decay: 0.2
+  warmup_ratio: 0.1 # 10%
+  accumulation_steps: 1
+  optimizer: "AdamW"
+  scheduler:
+    type: "constant"
+    num_cycles: Null
+
+  use_tb: False
+  use_wandb: True
+  wandb_mode: "online" # online, offline
+  checkpoint_path: Null
+
+Eval:
+  device: "cuda"
+  batch_size: 256
+  checkpoint_path: Null

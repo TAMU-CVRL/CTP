@@ -21,25 +21,23 @@ from data.kitti_triplet import Triplet_Object_KITTI
 from data.waymo_triplet import Triplet_Object_Waymo
 
 class CTPEvaluator:
-    def __init__(self, config_path, eval_path=None, loss_fn=None, alpha=None):
+    def __init__(self, config_path, eval_path=None, loss_fn=None, tau=None):
         self.cfg = load_config(config_path)
         self.device = self.cfg["Eval"].get("device", "cuda" if torch.cuda.is_available() else "cpu")
         self.prompt_template = self.cfg["Dataset"].get("prompt", "This is a ")
-        
+        self.tau = tau
         # Override configuration with command-line arguments if provided
         if eval_path:
             self.cfg["Eval"]["eval_data_path"] = eval_path
         if loss_fn:
             # Updating Model section as CTP model constructor reads from here
             self.cfg["Model"]["loss_fn"] = loss_fn
-        if alpha is not None:
-            self.cfg["Model"]["alpha"] = alpha
 
         # Automatically detect dataset type from the JSONL path
         self.eval_path = self.cfg["Eval"]["eval_data_path"]
         self.dataset_type = self._detect_dataset_type(self.eval_path)
         print(f"[Info] Detected dataset type: {self.dataset_type}")
-        print(f"[Info] Evaluation parameters: loss_fn={self.cfg['Model'].get('loss_fn')}, alpha={self.cfg['Model'].get('alpha')}")
+        print(f"[Info] Evaluation parameters: loss_fn={self.cfg['Model'].get('loss_fn')}, tau={self.tau}")
 
         self._setup_label_mapping()
         self.model = self._build_model()
@@ -105,7 +103,7 @@ class CTPEvaluator:
             image_encoder=img_encoder,
             lidar_encoder=pc_encoder,
             loss_fn=self.cfg["Model"]["loss_fn"],
-            alpha=self.cfg["Model"]["alpha"]
+            tau=self.tau
         ).to(self.device)
 
     def _build_dataloader(self):
@@ -326,7 +324,7 @@ class CTPEvaluator:
 
         with open(log_path, "a") as f:
             f.write(f"\n------ {self.dataset_type.upper()} EVAL @ {datetime.now()} ------\n")
-            f.write(f"Config: loss_fn={self.cfg['Model'].get('loss_fn')}\nalpha: {self.cfg['Model'].get('alpha')}\n")
+            f.write(f"Config: loss_fn={self.cfg['Model'].get('loss_fn')}\ntau: {self.tau}\n")
             f.write(f"Dataset: {dataset_name}\n")
             f.write("-" * 30 + "\n")
             for cls, data in results.items():
@@ -340,17 +338,17 @@ class CTPEvaluator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate CTP model with argument overrides.")
-    parser.add_argument("--config", type=str, required=True, help="Path to YAML config")
+    parser.add_argument("--config", type=str, default="configs/default.yaml", required=True, help="Path to YAML config")
     parser.add_argument("--eval_path", type=str, required=True, help="Override eval_data_path in config")
-    parser.add_argument("--loss_fn", type=str, default="l2_similarity_loss_completed", help="Override loss_fn in config")
-    parser.add_argument("--alpha", type=float, default=None, help="Override alpha in config")
+    parser.add_argument("--loss_fn", type=str, default="l2_tensor_loss", help="Override loss_fn in config")
+    parser.add_argument("--tau", type=float, default=0.5, help="tau = 0: Text - Point; tau = 1: Text - Image")
     args = parser.parse_args()
 
     evaluator = CTPEvaluator(
         config_path=args.config, 
         eval_path=args.eval_path, 
         loss_fn=args.loss_fn, 
-        alpha=args.alpha
+        tau=args.tau
     )
     
     res, acc = evaluator.run_evaluation()

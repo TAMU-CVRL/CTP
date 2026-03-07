@@ -51,7 +51,6 @@ class CTPTrainer:
             print(f"[Single-GPU] Training on {self.device}")
 
     def _build_dataloader(self):
-        # TODO: can load evaluation dataset as well
         sparse_method = self.cfg["Dataset"]["sparse_method"]
         sparse_to_dense = load_sparse_method(sparse_method)
         
@@ -108,7 +107,10 @@ class CTPTrainer:
             image_encoder=img_encoder,
             lidar_encoder=pc_encoder,
             loss_fn=self.cfg["Model"]["loss_fn"],
-            alpha=self.cfg["Model"]["alpha"]
+            alpha=self.cfg["Model"]["alpha"],
+            beta=self.cfg["Model"]["beta"],
+            gamma=self.cfg["Model"]["gamma"],
+            masked=self.cfg["Model"]["masked"]
         ).to(self.device)
 
         if self.world_size > 1:
@@ -280,8 +282,7 @@ class CTPTrainer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="configs/ctp_default.yaml",
-                        help="Path to the config file.")
+    parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to the config file.")
     args = parser.parse_args()
     
     config = load_config(args.config)
