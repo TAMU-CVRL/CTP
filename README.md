@@ -4,6 +4,7 @@ multiple modalities in a similarity tensor.
 
 ![pipeline](./figures/pipeline.jpg)
 <!-- <img src="./figures/pipeline.jpg" alt="overview" width="1000" align="center" /> -->
+[arXiv](https://arxiv.org/abs/2603.07874)|[BibTeX](#bibtex)
 
 ## Requirements
 We can create a [conda](https://docs.conda.io/en/latest/) environment named `ctp`:
@@ -150,3 +151,16 @@ Arugments:
   - `"car"`
   - `"truck"`
   - `"pedestrian"`
+
+## BibTeX
+```
+@misc{tao2026ctp,
+      title={Toward Unified Multimodal Representation Learning for Autonomous Driving}, 
+      author={Ximeng Tao and Dimitar Filev and Gaurav Pandey},
+      year={2026},
+      eprint={2603.07874},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2603.07874}, 
+}
+```
