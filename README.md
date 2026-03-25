@@ -1,4 +1,9 @@
 # Toward Unified Multimodal Representation Learning for Autonomous Driving
+[![arXiv](https://img.shields.io/badge/arXiv-2603.07901-b31b1b.svg)](https://arxiv.org/abs/2603.07874)
+[![Hugging Face Model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-FFD21E)](https://huggingface.co/Ximeng0831/CTP)
+[![Hugging Face Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-blue)](https://huggingface.co/datasets/Ximeng0831/CTP-Dataset)
+[![GitHub](https://img.shields.io/badge/GitHub-CTP-lightgrey?logo=github)](https://github.com/TAMU-CVRL/CTP)
+
 Overview of Contrastive Tensor Pre-training (CTP). We propose this framework that simultaneously aligns
 multiple modalities in a similarity tensor.
 
