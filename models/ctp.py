@@ -10,7 +10,7 @@ class ctp(nn.Module):
         self.image_encoder = image_encoder      
         self.lidar_encoder = lidar_encoder
         self.projector = nn.Linear(1024, 512)
-        self.alpha = alpha # weight for image and text features
+        self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
         self.tau = tau

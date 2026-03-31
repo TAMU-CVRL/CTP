@@ -9,6 +9,8 @@ multiple modalities in a similarity tensor.
 
 ![pipeline](./figures/pipeline.jpg)
 <!-- <img src="./figures/pipeline.jpg" alt="overview" width="1000" align="center" /> -->
+For the “car” class, we project features from three modalities using 200 samples onto a 2D plane.
+![result](./figures/align_comparison.jpg)
 To run a quick inference demo, clone the repository, set up the environment, and execute the notebook located at [`demo/inference.ipynb`](https://github.com/TAMU-CVRL/CTP/blob/main/demo/inference.ipynb).
 
 ## Requirements
@@ -37,7 +39,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
 Install other libraries:
 ``` bash
-pip install transformers==5.1.0 nuscenes-devkit==1.2.0 pandas==2.3.3 open3d==0.19.0 wandb==0.25.1 tensorboard==2.20.0 git+https://github.com/openai/CLIP.git matplotlib==3.9.4 huggingface_hub==1.8.0 umap-learn==0.5.11 beautifulsoup4==4.14.3 typeguard==4.4.4 pyyaml==6.0.3 tqdm==4.67.1 idna==3.11 ipykernel==7.2.0 ipywidgets==8.1.8 pickleshare==0.7.5 jmespath==1.1.0 pyrootutils==1.0.4
+pip install transformers==5.1.0 nuscenes-devkit==1.2.0 pandas==2.3.3 open3d==0.19.0 wandb==0.25.1 tensorboard==2.20.0 git+https://github.com/openai/CLIP.git matplotlib==3.9.4 huggingface_hub==1.8.0 umap-learn==0.5.11 accelerate==1.13.0 beautifulsoup4==4.14.3 typeguard==4.4.4 pyyaml==6.0.3 tqdm==4.67.1 idna==3.11 ipykernel==7.2.0 ipywidgets==8.1.8 pickleshare==0.7.5 jmespath==1.1.0 pyrootutils==1.0.4
 ```
 
 ## Triplet Data Preparation
@@ -172,6 +174,7 @@ Arugments:
   - `"pedestrian"`
 
 ## BibTeX
+If you find this work useful for your research, please cite our work:
 ```
 @misc{tao2026ctp,
       title={Toward Unified Multimodal Representation Learning for Autonomous Driving}, 

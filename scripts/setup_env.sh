@@ -36,6 +36,7 @@ pip install transformers==5.1.0 \
             matplotlib==3.9.4 \
             huggingface_hub==1.8.0 \
             umap-learn==0.5.11 \
+            accelerate==1.13.0 \
             beautifulsoup4==4.14.3 \
             typeguard==4.4.4 \
             pyyaml==6.0.3 \
@@ -45,7 +46,7 @@ pip install transformers==5.1.0 \
             ipywidgets==8.1.8 \
             pickleshare==0.7.5 \
             jmespath==1.1.0 \
-            pyrootutils==1.0.4
+            pyrootutils==1.0.4 \
 
 echo "Environment setup is complete!"
 echo "Please run the following command in your terminal to activate and use it:"
