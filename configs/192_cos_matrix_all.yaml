@@ -1,9 +1,9 @@
-Name: "default"
+Name: "192_cos_matrix_all"
 
 Model:
   clip_model: "ViT-B/32"
   point_model: "PointNet2"
-  loss_fn: "l2_tensor_loss"
+  loss_fn: "cosine_matrix_loss"
   alpha: 0.333
   beta: 0.333
   gamma: 0.333
@@ -36,4 +36,4 @@ Train:
 Eval:
   device: "cuda"
   batch_size: 256
-  checkpoint_path: "checkpoints/default/last_ckpt.pt"
+  checkpoint_path: "checkpoints/192_cos_matrix_all/ckpt_epoch9.pt"

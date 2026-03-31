@@ -154,6 +154,7 @@ class Triplet_Object_Nuscenes(Dataset):
 
     def _load_resource(self, rel_path, tar_handle, members_map, is_numpy=False):
         """Unified loader that checks the TAR first, then the local disk."""
+        # TODO: TAR reading supports multi-processing.
         # 1. Try loading from the Archive
         if tar_handle and rel_path in members_map:
             member = members_map[rel_path]

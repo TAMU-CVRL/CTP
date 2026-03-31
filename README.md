@@ -9,12 +9,23 @@ multiple modalities in a similarity tensor.
 
 ![pipeline](./figures/pipeline.jpg)
 <!-- <img src="./figures/pipeline.jpg" alt="overview" width="1000" align="center" /> -->
-[arXiv](https://arxiv.org/abs/2603.07874)|[BibTeX](#bibtex)
+To run a quick inference demo, clone the repository, set up the environment, and execute the notebook located at [`demo/inference.ipynb`](https://github.com/TAMU-CVRL/CTP/blob/main/demo/inference.ipynb).
 
 ## Requirements
+
+### Option 1: Automatic Setup
+
+The provided script can be used to set up the environment:
+
+```bash
+bash ./scripts/setup_env.sh
+```
+
+### Option 2: Manual Setup
+
 We can create a [conda](https://docs.conda.io/en/latest/) environment named `ctp`:
 ``` bash
-conda create -n ctp python=3.9
+conda create -n ctp python=3.10
 ```
 Then activate the environment and install required libraries:
 ``` bash
@@ -26,7 +37,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 ```
 Install other libraries:
 ``` bash
-pip install tensorboard wandb transformers matplotlib nuscenes-devkit umap-learn pyyaml typeguard git+https://github.com/openai/CLIP.git
+pip install transformers==5.1.0 nuscenes-devkit==1.2.0 pandas==2.3.3 open3d==0.19.0 wandb==0.25.1 tensorboard==2.20.0 git+https://github.com/openai/CLIP.git matplotlib==3.9.4 huggingface_hub==1.8.0 umap-learn==0.5.11 beautifulsoup4==4.14.3 typeguard==4.4.4 pyyaml==6.0.3 tqdm==4.67.1 idna==3.11 ipykernel==7.2.0 ipywidgets==8.1.8 pickleshare==0.7.5 jmespath==1.1.0 pyrootutils==1.0.4
 ```
 
 ## Triplet Data Preparation
@@ -49,7 +60,7 @@ dataset/
     ├── waymo_lidar/
     └── waymo_triplet_val.jsonl
 ```
-### Metadata Format
+<!-- ### Metadata Format
 Each line in the `.jsonl` file represents a single triplet sample. For example:
 ```json
 {
@@ -59,7 +70,8 @@ Each line in the `.jsonl` file represents a single triplet sample. For example:
   "bbox": [0.966, -5.245, 0.659, 0.291, 0.302, 1.265, 1.551],
   "caption": "The traffic cone is orange with a white reflective band near the top, has a conical geometry tapering to a point, and features a black and yellow reflective strip near its base."
 }
-```
+``` -->
+The dataset is available on Hugging Face. For more details, please refer to the [dataset page](https://huggingface.co/datasets/Ximeng0831/CTP-Dataset).
 
 ### Training Triplet Dataset
 ``` bash
@@ -88,7 +100,7 @@ python3 ./CaptionGen.py --jsonl_path dataset/kitti_triplets/kitti_triplet_train.
 
 To generate the Waymo triplet dataset, first create a separate environment named `waymo`:
 ``` bash
-conda create -n waymo python=3.9
+conda create -n waymo python=3.10
 conda activate waymo
 ```
 Install the required dependencies:
@@ -102,7 +114,7 @@ python3 ./TripletBuilder_waymo.py --data_path /PATH/TO/WMOD/DATASET --segment_fi
 ``` bash
 python3 ./CaptionGen.py --jsonl_path dataset/waymo_triplets/waymo_triplet_val.jsonl
 ```
-After finishing the data generation, you can switch back to the `ctp` environment:
+After finishing the data generation, we can switch back to the `ctp` environment:
 ``` bash
 conda activate ctp
 ```
@@ -116,6 +128,8 @@ Configuration Options:
 - **pc_only** (`True` / `False`): Whether to train only the point cloud encoder or all encoders.
 - **use_tb** (`True` / `False`): Whether to enable TensorBoard logging.
 - **use_wandb** (`True` / `False`): Whether to enable Weights & Biases logging. Run `wandb login` first to authenticate.
+
+Checkpoints are available on [Hugging Face](https://huggingface.co/Ximeng0831/CTP).
 
 ## Evaluation
 ### Zero-shot Classification Accuracy

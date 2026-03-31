@@ -129,7 +129,7 @@ class CTPEvaluator:
             dataset, 
             batch_size=self.cfg["Eval"]["batch_size"], 
             shuffle=False, 
-            num_workers=self.cfg["Train"].get("num_workers", 4),
+            num_workers=self.cfg["Train"].get("num_workers", 0), # reading tar files only supports num_workers = 0
             pin_memory=True
         )
 
@@ -180,9 +180,9 @@ class CTPEvaluator:
         return {"text": np.vstack(t_list), "image": np.vstack(i_list), "lidar": np.vstack(l_list)}
 
     def _draw_comparison_plot(self, emb, n, reduction_method, target_label, after_ckpt_path, before_ckpt_path=None, save_name=None):
-        plt.rcParams.update({'font.size': 14, 'legend.fontsize': 12})
+        fig = plt.figure(figsize=(10, 10))
         
-        plt.figure(figsize=(10, 10))
+        plt.rcParams.update({'font.size': 14, 'legend.fontsize': 12})
 
         # Before state (first 3*n rows)
         bt = emb[:n]                  # before text
@@ -225,8 +225,10 @@ class CTPEvaluator:
         
         print(f"[Success] {reduction_method.upper()} plot saved to: {save_path}")
 
+        return fig
+    
     def plot_embedding_comparison(self, target_label, after_ckpt_path, before_ckpt_path=None, 
-                                  reduction_method="umap", max_samples=50, **kwargs):
+                                  reduction_method="umap", max_samples=200, **kwargs):
         """Integrates feature comparison plot generation and multi-modal Acc calculation"""
         
         # 1. Extract 'Before' state
@@ -255,13 +257,15 @@ class CTPEvaluator:
 
         emb = reducer.fit_transform(all_data)
         
-        self._draw_comparison_plot(
+        fig = self._draw_comparison_plot(
             emb,
             before_feats["text"].shape[0], 
             reduction_method, 
             target_label,
             after_ckpt_path
         )
+        
+        return fig
 
     def run_evaluation(self):
         """Inference loop for computing the confusion matrix."""

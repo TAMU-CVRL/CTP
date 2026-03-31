@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from models.clip.model import CLIP
 from models.pointnet2.pointnet2_encoder import PointNet2Encoder
-from models.PTv3.ptv3_encoder import PTv3Encoder
+# from models.PTv3.ptv3_encoder import PTv3Encoder
 from tqdm import tqdm
 
 from transformers import (
@@ -178,9 +178,9 @@ def pc_backbone(pc_encoder, device):
     if pc_encoder == "pointnet2":
         # [B, C, N] -> [B, 1024]
         pc_encoder = PointNet2Encoder().to(device)
-    elif pc_encoder == "ptv3":
-        # [B, C, N] -> [B, 1024]
-        pc_encoder = PTv3Encoder().to(device)
+    # elif pc_encoder == "ptv3":
+    #     # [B, C, N] -> [B, 1024]
+    #     pc_encoder = PTv3Encoder().to(device)
     else:
         raise ValueError(f"Unknown lidar encoder: {pc_encoder}")
     return pc_encoder
