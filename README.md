@@ -9,7 +9,7 @@ multiple modalities in a similarity tensor.
 
 ![pipeline](./figures/pipeline.jpg)
 <!-- <img src="./figures/pipeline.jpg" alt="overview" width="1000" align="center" /> -->
-For the “car” class, we project features from three modalities using 200 samples onto a 2D plane.
+For the “car” class, we project features from three modalities using 500 samples onto a 2D plane.
 ![result](./figures/align_comparison.jpg)
 To run a quick inference demo, clone the repository, set up the environment, and execute the notebook located at [`demo/inference.ipynb`](https://github.com/TAMU-CVRL/CTP/blob/main/demo/inference.ipynb).
 
